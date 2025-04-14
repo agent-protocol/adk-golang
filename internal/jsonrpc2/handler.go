@@ -203,6 +203,14 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 				Data:    err.Error(),
 			})
 		}
+		// Add validation for required fields
+		if params.ID == "" {
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
+				Code:    -32602,
+				Message: "Invalid parameters",
+				Data:    "Task ID cannot be empty",
+			})
+		}
 		result, err = s.handler.GetTask(&params)
 
 	case "tasks/cancel":
@@ -212,6 +220,14 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 				Code:    -32602,
 				Message: "Invalid parameters",
 				Data:    err.Error(),
+			})
+		}
+		// Add validation for required fields
+		if params.ID == "" {
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
+				Code:    -32602,
+				Message: "Invalid parameters",
+				Data:    "Task ID cannot be empty",
 			})
 		}
 		result, err = s.handler.CancelTask(&params)
@@ -234,6 +250,14 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 				Code:    -32602,
 				Message: "Invalid parameters",
 				Data:    err.Error(),
+			})
+		}
+		// Add validation for required fields
+		if params.ID == "" {
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
+				Code:    -32602,
+				Message: "Invalid parameters",
+				Data:    "Task ID cannot be empty",
 			})
 		}
 		result, err = s.handler.GetTaskPushNotification(&params)
@@ -267,6 +291,14 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 				Data:    err.Error(),
 			})
 		}
+		// Add validation for required fields
+		if params.ID == "" {
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
+				Code:    -32602,
+				Message: "Invalid parameters",
+				Data:    "Task ID cannot be empty",
+			})
+		}
 
 		err = s.handler.ResubscribeToTask(&params, w, req.ID)
 		if err != nil {
@@ -283,81 +315,38 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 
 	// Handle errors
 	if err != nil {
-		// First check if it's already a JSONRPCError
-		if jsonRPCErr, ok := err.(*a2a.JSONRPCError); ok {
-			return createErrorResponse(req.ID, jsonRPCErr)
-		}
-
-		// Check for specific error types and convert them to JSONRPCError
-		if taskNotFound, ok := err.(*a2a.TaskNotFoundError); ok {
-			return &a2a.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &a2a.JSONRPCError{
-					Code:    taskNotFound.Code,
-					Message: taskNotFound.Message,
-					Data:    taskNotFound.Data,
-				},
+		var jsonRpcErr *a2a.JSONRPCError
+		// Handle specific A2A error types directly to preserve data
+		switch e := err.(type) {
+		case *a2a.TaskNotFoundError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.InvalidParamsError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.MethodNotFoundError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.InvalidRequestError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.JSONParseError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.InternalError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.TaskNotCancelableError:
+			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+		case *a2a.JSONRPCError: // Handle generic JSONRPCError as well
+			jsonRpcErr = e
+		default:
+			// Default to internal error, using the error message as data for context
+			slog.Error("processRequest encountered unexpected error type from handler", "error", err, "type", fmt.Sprintf("%T", err))
+			jsonRpcErr = &a2a.JSONRPCError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    err.Error(), // Use error string as data for unknown errors
 			}
 		}
-
-		if invalidParams, ok := err.(*a2a.InvalidParamsError); ok {
-			return &a2a.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &a2a.JSONRPCError{
-					Code:    invalidParams.Code,
-					Message: invalidParams.Message,
-					Data:    invalidParams.Data,
-				},
-			}
-		}
-
-		if methodNotFound, ok := err.(*a2a.MethodNotFoundError); ok {
-			return &a2a.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &a2a.JSONRPCError{
-					Code:    methodNotFound.Code,
-					Message: methodNotFound.Message,
-					Data:    methodNotFound.Data,
-				},
-			}
-		}
-
-		if invalidRequest, ok := err.(*a2a.InvalidRequestError); ok {
-			return &a2a.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &a2a.JSONRPCError{
-					Code:    invalidRequest.Code,
-					Message: invalidRequest.Message,
-					Data:    invalidRequest.Data,
-				},
-			}
-		}
-
-		if jsonParseErr, ok := err.(*a2a.JSONParseError); ok {
-			return &a2a.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &a2a.JSONRPCError{
-					Code:    jsonParseErr.Code,
-					Message: jsonParseErr.Message,
-					Data:    jsonParseErr.Data,
-				},
-			}
-		}
-
-		// Default to internal error
 		return &a2a.JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
-			Error: &a2a.JSONRPCError{
-				Code:    -32603,
-				Message: "Internal error",
-				Data:    err.Error(),
-			},
+			Error:   jsonRpcErr,
 		}
 	}
 
@@ -441,6 +430,12 @@ func writeError(w http.ResponseWriter, id any, err interface{}) {
 			Message: e.Message,
 			Data:    e.Data,
 		}
+	case *a2a.TaskNotCancelableError: // Add missing case for TaskNotCancelableError
+		jsonRpcErr = &a2a.JSONRPCError{
+			Code:    e.Code,
+			Message: e.Message,
+			Data:    e.Data,
+		}
 	default:
 		// If it's an unknown error type, create a generic internal error
 		jsonRpcErr = &a2a.JSONRPCError{
@@ -458,54 +453,34 @@ func writeError(w http.ResponseWriter, id any, err interface{}) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func createErrorResponse(id any, err interface{}) *a2a.JSONRPCResponse {
+func createErrorResponse(id any, err error) *a2a.JSONRPCResponse {
 	var jsonRpcErr *a2a.JSONRPCError
 
+	// Convert specific A2A error types to JSONRPCError
 	switch e := err.(type) {
-	case *a2a.JSONRPCError:
-		jsonRpcErr = e
-	case *a2a.JSONParseError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
-	case *a2a.InvalidRequestError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
-	case *a2a.MethodNotFoundError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
-	case *a2a.InvalidParamsError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
 	case *a2a.TaskNotFoundError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.InvalidParamsError:
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.MethodNotFoundError:
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.InvalidRequestError:
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.JSONParseError:
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
 	case *a2a.InternalError:
-		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    e.Code,
-			Message: e.Message,
-			Data:    e.Data,
-		}
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.TaskNotCancelableError:
+		jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
+	case *a2a.JSONRPCError: // Already in the correct format
+		jsonRpcErr = e
 	default:
-		// If it's an unknown error type, create a generic internal error
+		// Fallback for unexpected error types
+		slog.Error("createErrorResponse received unexpected error type", "error", err)
 		jsonRpcErr = &a2a.JSONRPCError{
-			Code:    -32603,
+			Code:    -32603, // Internal Error
 			Message: "Internal error",
-			Data:    fmt.Sprintf("%v", err),
+			Data:    fmt.Sprintf("Unhandled error: %v", err),
 		}
 	}
 
