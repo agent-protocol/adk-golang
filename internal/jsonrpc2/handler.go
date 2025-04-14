@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 
@@ -104,8 +103,10 @@ func (s *Server) handleSingleRequest(w http.ResponseWriter, body []byte) {
 		return
 	}
 
-	// Process the request
-	resp := s.processRequest(w, req)
+	// Process the request/notification
+	resp := s.processRequest(w, req) // processRequest now handles both
+
+	// Only send response if it's not a notification and not a streaming request handled separately
 	if resp != nil {
 		json.NewEncoder(w).Encode(resp)
 	}
@@ -135,11 +136,11 @@ func (s *Server) handleBatchRequest(w http.ResponseWriter, body []byte) {
 	// Process each request and collect responses
 	responses := make([]json.RawMessage, 0, len(requests))
 	for _, req := range requests {
-		// Validate JSON-RPC version
+		// Validate JSON-RPC version early for batch items
 		if req.JSONRPC != "2.0" {
 			errResp := a2a.JSONRPCResponse{
 				JSONRPC: "2.0",
-				ID:      req.ID,
+				ID:      req.ID, // Use the request's ID if available
 				Error: &a2a.JSONRPCError{
 					Code:    -32600,
 					Message: "Request payload validation error",
@@ -151,14 +152,30 @@ func (s *Server) handleBatchRequest(w http.ResponseWriter, body []byte) {
 			continue
 		}
 
-		resp := s.processRequest(w, req)
+		// Process the request/notification
+		resp := s.processRequest(w, req) // processRequest handles both
+
+		// Only add response to batch if it's not a notification and not a streaming request
 		if resp != nil {
-			rawResp, _ := json.Marshal(resp)
-			responses = append(responses, rawResp)
+			rawResp, err := json.Marshal(resp)
+			// Handle potential marshaling error for the individual response
+			if err != nil {
+				slog.Error("Error marshaling batch response item", "error", err, "request_id", req.ID)
+				// Optionally add a generic error response for this item
+				errResp := a2a.JSONRPCResponse{
+					JSONRPC: "2.0",
+					ID:      req.ID,
+					Error:   &a2a.JSONRPCError{Code: -32603, Message: "Internal error"},
+				}
+				rawResp, _ = json.Marshal(errResp) // Marshal the error response
+				responses = append(responses, rawResp)
+			} else {
+				responses = append(responses, rawResp)
+			}
 		}
 	}
 
-	// Return all responses
+	// Return all collected responses (if any)
 	if len(responses) > 0 {
 		w.Write([]byte("["))
 		for i, resp := range responses {
@@ -168,186 +185,147 @@ func (s *Server) handleBatchRequest(w http.ResponseWriter, body []byte) {
 			w.Write(resp)
 		}
 		w.Write([]byte("]"))
+	} else {
+		// According to JSON-RPC 2.0 spec, if a batch consists entirely of notifications,
+		// the server MUST NOT return an empty Array. It MUST NOT return any response.
+		// So, we write nothing here.
 	}
 }
 
-// processRequest handles a single JSON-RPC request
-func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSONRPCResponse {
-	// For notifications (no ID), we don't return a response
-	if req.ID == nil {
-		s.processNotification(req)
-		return nil
-	}
-
+// _dispatchMethodCall handles the core logic of unmarshaling params and calling the handler method
+// for non-streaming requests/notifications.
+func (s *Server) _dispatchMethodCall(req A2ARequest) (any, error) {
+	var params any
+	var handlerCall func() (any, error)
 	var err error
-	var result any
 
 	switch req.Method {
 	case "tasks/send":
-		var params a2a.TaskSendParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
-		}
-		result, err = s.handler.SendTask(&params)
-
+		var p a2a.TaskSendParams
+		params = &p
+		handlerCall = func() (any, error) { return s.handler.SendTask(&p) }
 	case "tasks/get":
-		var params a2a.TaskQueryParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
+		var p a2a.TaskQueryParams
+		params = &p
+		handlerCall = func() (any, error) {
+			if p.ID == "" {
+				return nil, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: "Task ID cannot be empty"}
+			}
+			return s.handler.GetTask(&p)
 		}
-		// Add validation for required fields
-		if params.ID == "" {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    "Task ID cannot be empty",
-			})
-		}
-		result, err = s.handler.GetTask(&params)
-
 	case "tasks/cancel":
-		var params a2a.TaskIdParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
+		var p a2a.TaskIdParams
+		params = &p
+		handlerCall = func() (any, error) {
+			if p.ID == "" {
+				return nil, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: "Task ID cannot be empty"}
+			}
+			return s.handler.CancelTask(&p)
 		}
-		// Add validation for required fields
-		if params.ID == "" {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    "Task ID cannot be empty",
-			})
-		}
-		result, err = s.handler.CancelTask(&params)
-
 	case "tasks/pushNotification/set":
-		var params a2a.TaskPushNotificationConfig
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
-		}
-		result, err = s.handler.SetTaskPushNotification(&params)
-
+		var p a2a.TaskPushNotificationConfig
+		params = &p
+		handlerCall = func() (any, error) { return s.handler.SetTaskPushNotification(&p) }
 	case "tasks/pushNotification/get":
-		var params a2a.TaskIdParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
+		var p a2a.TaskIdParams
+		params = &p
+		handlerCall = func() (any, error) {
+			if p.ID == "" {
+				return nil, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: "Task ID cannot be empty"}
+			}
+			return s.handler.GetTaskPushNotification(&p)
 		}
-		// Add validation for required fields
-		if params.ID == "" {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    "Task ID cannot be empty",
-			})
-		}
-		result, err = s.handler.GetTaskPushNotification(&params)
-
-	case "tasks/sendSubscribe":
-		// This is a streaming request
-		var params a2a.TaskSendParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
-		}
-
-		// For streaming requests, we don't return a response immediately
-		// The handler will send streaming responses
-		err = s.handler.SubscribeToTask(&params, w, req.ID)
-		if err != nil {
-			slog.Error("Error subscribing to task", "error", err)
-		}
-		return nil
-
-	case "tasks/resubscribe":
-		// This is also a streaming request
-		var params a2a.TaskQueryParams
-		if err = json.Unmarshal(req.Params, &params); err != nil {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    err.Error(),
-			})
-		}
-		// Add validation for required fields
-		if params.ID == "" {
-			return createErrorResponse(req.ID, &a2a.InvalidParamsError{
-				Code:    -32602,
-				Message: "Invalid parameters",
-				Data:    "Task ID cannot be empty",
-			})
-		}
-
-		err = s.handler.ResubscribeToTask(&params, w, req.ID)
-		if err != nil {
-			slog.Error("Error resubscribing to task", "error", err)
-		}
-		return nil
-
 	default:
-		return createErrorResponse(req.ID, &a2a.MethodNotFoundError{
-			Code:    -32601,
-			Message: "Method not found",
-		})
+		return nil, &a2a.MethodNotFoundError{Code: -32601, Message: "Method not found"}
 	}
 
-	// Handle errors
-	if err != nil {
-		var jsonRpcErr *a2a.JSONRPCError
-		// Handle specific A2A error types directly to preserve data
-		switch e := err.(type) {
-		case *a2a.TaskNotFoundError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.InvalidParamsError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.MethodNotFoundError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.InvalidRequestError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.JSONParseError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.InternalError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.TaskNotCancelableError:
-			jsonRpcErr = &a2a.JSONRPCError{Code: e.Code, Message: e.Message, Data: e.Data}
-		case *a2a.JSONRPCError: // Handle generic JSONRPCError as well
-			jsonRpcErr = e
-		default:
-			// Default to internal error, using the error message as data for context
-			slog.Error("processRequest encountered unexpected error type from handler", "error", err, "type", fmt.Sprintf("%T", err))
-			jsonRpcErr = &a2a.JSONRPCError{
-				Code:    -32603,
-				Message: "Internal error",
-				Data:    err.Error(), // Use error string as data for unknown errors
+	// Unmarshal params
+	if err = json.Unmarshal(req.Params, params); err != nil {
+		return nil, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: err.Error()}
+	}
+
+	// Call the handler
+	return handlerCall()
+}
+
+// processRequest handles a single JSON-RPC request or notification.
+// It returns a response object for requests, nil for notifications or handled streaming requests.
+func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSONRPCResponse {
+	var result any
+	var err error
+
+	// Handle streaming methods separately as they need the ResponseWriter
+	switch req.Method {
+	case "tasks/sendSubscribe":
+		var params a2a.TaskSendParams
+		if err = json.Unmarshal(req.Params, &params); err != nil {
+			// Need ID for error response
+			if req.ID == nil {
+				slog.Error("Cannot process streaming notification", "method", req.Method, "error", err)
+				return nil // Cannot send error response for notification
 			}
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: err.Error()})
 		}
-		return &a2a.JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Error:   jsonRpcErr,
+		// Streaming requests require an ID
+		if req.ID == nil {
+			slog.Error("Streaming method requires an ID", "method", req.Method)
+			// Technically invalid, but can't return error without ID
+			return nil
 		}
+		err = s.handler.SubscribeToTask(&params, w, req.ID)
+		if err != nil {
+			slog.Error("Error subscribing to task", "error", err, "request_id", req.ID)
+			// Attempt to send an error response back if possible, although the stream might be compromised
+			return createErrorResponse(req.ID, err)
+		}
+		return nil // Handler manages the streaming response
+
+	case "tasks/resubscribe":
+		var params a2a.TaskQueryParams
+		if err = json.Unmarshal(req.Params, &params); err != nil {
+			if req.ID == nil {
+				slog.Error("Cannot process streaming notification", "method", req.Method, "error", err)
+				return nil
+			}
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: err.Error()})
+		}
+		if req.ID == nil {
+			slog.Error("Streaming method requires an ID", "method", req.Method)
+			return nil
+		}
+		if params.ID == "" {
+			return createErrorResponse(req.ID, &a2a.InvalidParamsError{Code: -32602, Message: "Invalid parameters", Data: "Task ID cannot be empty"})
+		}
+		err = s.handler.ResubscribeToTask(&params, w, req.ID)
+		if err != nil {
+			slog.Error("Error resubscribing to task", "error", err, "request_id", req.ID)
+			return createErrorResponse(req.ID, err)
+		}
+		return nil // Handler manages the streaming response
+
+	default:
+		// Handle non-streaming methods using the helper
+		result, err = s._dispatchMethodCall(req)
+	}
+
+	// --- Response Handling ---
+
+	// If it's a notification (no ID), log errors but don't return a response
+	if req.ID == nil {
+		if err != nil {
+			// Log the error encountered while processing the notification
+			slog.Error("Error processing notification", "method", req.Method, "error", err)
+		} else {
+			// Optional: Log successful notification processing
+			slog.Debug("Processed notification", "method", req.Method)
+		}
+		return nil // No response for notifications
+	}
+
+	// If it's a request (has ID), handle errors or create success response
+	if err != nil {
+		// Use createErrorResponse which handles specific A2A error types
+		return createErrorResponse(req.ID, err)
 	}
 
 	// Create successful response
@@ -355,41 +333,6 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result:  result,
-	}
-}
-
-// processNotification handles JSON-RPC notifications (no response)
-func (s *Server) processNotification(req A2ARequest) {
-	// Process notifications by method, but don't return a response
-	log.Printf("Received notification: %s", req.Method)
-
-	switch req.Method {
-	case "tasks/send":
-		var params a2a.TaskSendParams
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			log.Printf("Error parsing notification params: %v", err)
-			return
-		}
-		// We need to make sure task gets created in the handler
-		task, err := s.handler.SendTask(&params)
-		if err != nil {
-			log.Printf("Error processing notification: %v", err)
-		} else {
-			log.Printf("Task created from notification: %s", task.ID)
-		}
-	case "tasks/cancel":
-		var params a2a.TaskIdParams
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			log.Printf("Error parsing notification params: %v", err)
-			return
-		}
-		_, err := s.handler.CancelTask(&params)
-		if err != nil {
-			log.Printf("Error processing notification: %v", err)
-		}
-	// Add other methods as needed
-	default:
-		log.Printf("Notification for unknown method: %s", req.Method)
 	}
 }
 
