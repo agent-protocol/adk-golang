@@ -70,13 +70,6 @@ type AuthenticationInfo struct {
 	// Consider using map[string]any or custom marshaling if needed.
 }
 
-// PushNotificationNotSupportedError indicates push notifications are not supported.
-type PushNotificationNotSupportedError struct {
-	Code    int    `json:"code"`    // Should be -32003
-	Message string `json:"message"` // Should be "Push Notification is not supported"
-	Data    any    `json:"data"`    // Should be null
-}
-
 // CancelTaskRequest is a JSON-RPC request to cancel a task.
 type CancelTaskRequest struct {
 	JSONRPC string       `json:"jsonrpc"` // "2.0"
@@ -156,41 +149,6 @@ type GetTaskResponse struct {
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
-// InternalError represents a generic internal JSON-RPC error.
-type InternalError struct {
-	Code    int    `json:"code"`    // Should be -32603
-	Message string `json:"message"` // Should be "Internal error"
-	Data    any    `json:"data,omitempty"`
-}
-
-// InvalidParamsError represents a JSON-RPC invalid parameters error.
-type InvalidParamsError struct {
-	Code    int    `json:"code"`    // Should be -32602
-	Message string `json:"message"` // Should be "Invalid parameters"
-	Data    any    `json:"data,omitempty"`
-}
-
-// InvalidRequestError represents a JSON-RPC invalid request error.
-type InvalidRequestError struct {
-	Code    int    `json:"code"`    // Should be -32600
-	Message string `json:"message"` // Should be "Request payload validation error"
-	Data    any    `json:"data,omitempty"`
-}
-
-// JSONParseError represents a JSON-RPC parse error.
-type JSONParseError struct {
-	Code    int    `json:"code"`    // Should be -32700
-	Message string `json:"message"` // Should be "Invalid JSON payload"
-	Data    any    `json:"data,omitempty"`
-}
-
-// JSONRPCError represents a standard JSON-RPC error object.
-type JSONRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-}
-
 // JSONRPCMessage is a base structure for JSON-RPC messages.
 type JSONRPCMessage struct {
 	JSONRPC string `json:"jsonrpc,omitempty"` // "2.0"
@@ -218,13 +176,6 @@ type Message struct {
 	Role     string         `json:"role"`  // "user" or "agent"
 	Parts    []Part         `json:"parts"` // Part is a union type
 	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// MethodNotFoundError represents a JSON-RPC method not found error.
-type MethodNotFoundError struct {
-	Code    int    `json:"code"`    // Should be -32601
-	Message string `json:"message"` // Should be "Method not found"
-	Data    any    `json:"data"`    // Should be null
 }
 
 // PushNotificationConfig defines the configuration for push notifications.
@@ -367,20 +318,6 @@ type TaskPushNotificationConfig struct {
 	PushNotificationConfig PushNotificationConfig `json:"pushNotificationConfig"`
 }
 
-// TaskNotCancelableError indicates a task cannot be canceled (e.g., already completed).
-type TaskNotCancelableError struct {
-	Code    int    `json:"code"`    // Should be -32002
-	Message string `json:"message"` // Should be "Task cannot be canceled"
-	Data    any    `json:"data"`    // Should be null
-}
-
-// TaskNotFoundError indicates the requested task ID was not found.
-type TaskNotFoundError struct {
-	Code    int    `json:"code"`    // Should be -32001
-	Message string `json:"message"` // Should be "Task not found"
-	Data    any    `json:"data"`    // Should be null
-}
-
 // TaskIdParams provides parameters containing just a task ID.
 type TaskIdParams struct {
 	ID       string         `json:"id"`
@@ -452,13 +389,6 @@ type TextPart struct {
 	Type     string         `json:"type"` // "text"
 	Text     string         `json:"text"`
 	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// UnsupportedOperationError indicates the requested operation is not supported by the agent.
-type UnsupportedOperationError struct {
-	Code    int    `json:"code"`    // Should be -32004
-	Message string `json:"message"` // Should be "This operation is not supported"
-	Data    any    `json:"data"`    // Should be null
 }
 
 // A2ARequest represents any valid A2A request (union type).
