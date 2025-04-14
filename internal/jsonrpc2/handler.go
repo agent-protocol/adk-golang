@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 )
@@ -39,7 +39,6 @@ type TaskHandler interface {
 // Server represents a JSON-RPC 2.0 server for A2A protocol
 type Server struct {
 	handler TaskHandler
-	mu      sync.RWMutex
 }
 
 // NewServer creates a new A2A JSON-RPC 2.0 server with the given task handler
@@ -253,6 +252,9 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 		// For streaming requests, we don't return a response immediately
 		// The handler will send streaming responses
 		err = s.handler.SubscribeToTask(&params, w, req.ID)
+		if err != nil {
+			slog.Error("Error subscribing to task", "error", err)
+		}
 		return nil
 
 	case "tasks/resubscribe":
@@ -267,6 +269,9 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 		}
 
 		err = s.handler.ResubscribeToTask(&params, w, req.ID)
+		if err != nil {
+			slog.Error("Error resubscribing to task", "error", err)
+		}
 		return nil
 
 	default:
