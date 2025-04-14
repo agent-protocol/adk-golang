@@ -366,9 +366,37 @@ func (s *Server) processRequest(w http.ResponseWriter, req A2ARequest) *a2a.JSON
 
 // processNotification handles JSON-RPC notifications (no response)
 func (s *Server) processNotification(req A2ARequest) {
-	// Process notifications as needed (logging, etc.)
-	// We don't send responses for notifications
+	// Process notifications by method, but don't return a response
 	log.Printf("Received notification: %s", req.Method)
+
+	switch req.Method {
+	case "tasks/send":
+		var params a2a.TaskSendParams
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			log.Printf("Error parsing notification params: %v", err)
+			return
+		}
+		// We need to make sure task gets created in the handler
+		task, err := s.handler.SendTask(&params)
+		if err != nil {
+			log.Printf("Error processing notification: %v", err)
+		} else {
+			log.Printf("Task created from notification: %s", task.ID)
+		}
+	case "tasks/cancel":
+		var params a2a.TaskIdParams
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			log.Printf("Error parsing notification params: %v", err)
+			return
+		}
+		_, err := s.handler.CancelTask(&params)
+		if err != nil {
+			log.Printf("Error processing notification: %v", err)
+		}
+	// Add other methods as needed
+	default:
+		log.Printf("Notification for unknown method: %s", req.Method)
+	}
 }
 
 // Helper functions
