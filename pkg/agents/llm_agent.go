@@ -570,6 +570,14 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 // executeToolCalls executes all function calls and returns their responses.
 func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
 	log.Println("Starting tool execution...")
+
+	// Execute before-tool callback
+	if a.callbacks.BeforeToolCallback != nil {
+		if err := a.callbacks.BeforeToolCallback(ctx, invocationCtx); err != nil {
+			return nil, fmt.Errorf("before-tool callback failed: %w", err)
+		}
+	}
+
 	toolResponses := make([]core.Part, 0, len(functionCalls))
 
 	for _, funcCall := range functionCalls {
@@ -642,6 +650,27 @@ func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *
 	}
 
 	log.Println("Tool execution completed.")
+
+	// Execute after-tool callback
+	if a.callbacks.AfterToolCallback != nil {
+		// Create events for the tool responses to pass to the callback
+		var toolEvents []*core.Event
+		for _, part := range toolResponses {
+			if part.Type == "function_response" && part.FunctionResponse != nil {
+				event := core.NewEvent(invocationCtx.InvocationID, a.name)
+				event.Content = &core.Content{
+					Role:  "agent",
+					Parts: []core.Part{part},
+				}
+				toolEvents = append(toolEvents, event)
+			}
+		}
+
+		if err := a.callbacks.AfterToolCallback(ctx, invocationCtx, toolEvents); err != nil {
+			return nil, fmt.Errorf("after-tool callback failed: %w", err)
+		}
+	}
+
 	return toolResponses, nil
 }
 
