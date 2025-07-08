@@ -47,11 +47,11 @@ func init() {
 	// Create agent configuration for Ollama
 	agentConfig := &agents.LlmAgentConfig{
 		Model:            modelName,
-		Temperature:      ptr.Float32(0.7),
+		Temperature:      ptr.Float32(0.3), // Lower temperature for more consistent behavior
 		MaxTokens:        ptr.Ptr(4096),
-		MaxToolCalls:     3, // Limit tool calls to prevent loops
+		MaxToolCalls:     1, // Only allow 1 tool call to prevent loops
 		ToolCallTimeout:  30 * time.Second,
-		RetryAttempts:    3,
+		RetryAttempts:    2,    // Reduce retries to prevent multiple calls
 		StreamingEnabled: true, // Enable streaming for web UI
 	}
 
@@ -66,9 +66,30 @@ func init() {
 	agent.SetLLMConnection(ollamaConnection)
 
 	// Set instruction for better tool usage
-	agent.SetInstruction("You are an expert assistant. When users ask questions, use the appropriate tools available to you. If they ask for time information, use the time tools. If they need search results, use the search tool. After using any tool, always provide a clear, final response to the user based on the tool results. Do not repeatedly call the same tool - use the results from the first call to answer the user's question.")
+	agent.SetInstruction(`You are a helpful search assistant. When users ask questions:
 
-	// Add the local search tool (equivalent to google_search in Python)
+1. Use the duckduckgo_search tool ONCE to find relevant information
+2. Present the search results in a clear, organized format with:
+   - A brief summary of what you found
+   - List the key results with titles and brief descriptions
+   - Include relevant URLs so users can learn more
+3. Do NOT call the search tool multiple times for the same query
+4. Always provide a complete response based on the search results
+
+Example response format:
+"I found several great resources about [topic]:
+
+1. **[Title 1]** - [Brief description]
+   Link: [URL]
+
+2. **[Title 2]** - [Brief description] 
+   Link: [URL]
+
+[Additional context or summary]"
+
+Remember: Call each tool only ONCE per user question.`)
+
+	// Add the local search tool (DuckDuckGo Search implementation)
 	searchTool := tools.NewDuckDuckGoSearchTool()
 	log.Println("Adding tools to the agent...")
 	log.Println("Adding DuckDuckGo Search Tool...")
@@ -99,24 +120,6 @@ func init() {
 		agent.AddTool(timeTool)
 	} else {
 		log.Printf("Failed to add Time Tool: %v", err)
-	}
-
-	// Weather helper tool (mock implementation for demo)
-	weatherTool, err := tools.NewFunctionTool(
-		"get_weather_info",
-		"Gets weather information for a location (searches for current weather data)",
-		func(location string) map[string]interface{} {
-			return map[string]interface{}{
-				"suggestion": "I'll search for current weather information for " + location,
-				"note":       "Use duckduckgo_search to find the most current weather data",
-			}
-		},
-	)
-	log.Println("Adding Weather Tool...")
-	if err == nil {
-		agent.AddTool(weatherTool)
-	} else {
-		log.Printf("Failed to add Weather Tool: %v", err)
 	}
 
 	// Static Time tool for testing without parameters
