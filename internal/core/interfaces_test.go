@@ -9,22 +9,32 @@ import (
 // Mock implementations for testing
 
 type mockAgent struct {
-	name        string
-	description string
-	instruction string
-	subAgents   []BaseAgent
-	parent      BaseAgent
+	name                string
+	description         string
+	instruction         string
+	subAgents           []BaseAgent
+	parent              BaseAgent
+	beforeAgentCallback BeforeAgentCallback
+	afterAgentCallback  AfterAgentCallback
 }
 
-func (m *mockAgent) Name() string                       { return m.name }
-func (m *mockAgent) Description() string                { return m.description }
-func (m *mockAgent) Instruction() string                { return m.instruction }
-func (m *mockAgent) SubAgents() []BaseAgent             { return m.subAgents }
-func (m *mockAgent) ParentAgent() BaseAgent             { return m.parent }
-func (m *mockAgent) SetParentAgent(parent BaseAgent)    { m.parent = parent }
-func (m *mockAgent) FindAgent(name string) BaseAgent    { return nil }
-func (m *mockAgent) FindSubAgent(name string) BaseAgent { return nil }
-func (m *mockAgent) Cleanup(ctx context.Context) error  { return nil }
+func (m *mockAgent) Name() string                                { return m.name }
+func (m *mockAgent) Description() string                         { return m.description }
+func (m *mockAgent) Instruction() string                         { return m.instruction }
+func (m *mockAgent) SubAgents() []BaseAgent                      { return m.subAgents }
+func (m *mockAgent) ParentAgent() BaseAgent                      { return m.parent }
+func (m *mockAgent) SetParentAgent(parent BaseAgent)             { m.parent = parent }
+func (m *mockAgent) FindAgent(name string) BaseAgent             { return nil }
+func (m *mockAgent) FindSubAgent(name string) BaseAgent          { return nil }
+func (m *mockAgent) GetBeforeAgentCallback() BeforeAgentCallback { return m.beforeAgentCallback }
+func (m *mockAgent) SetBeforeAgentCallback(callback BeforeAgentCallback) {
+	m.beforeAgentCallback = callback
+}
+func (m *mockAgent) GetAfterAgentCallback() AfterAgentCallback { return m.afterAgentCallback }
+func (m *mockAgent) SetAfterAgentCallback(callback AfterAgentCallback) {
+	m.afterAgentCallback = callback
+}
+func (m *mockAgent) Cleanup(ctx context.Context) error { return nil }
 
 func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *InvocationContext) (EventStream, error) {
 	eventChan := make(chan *Event, 1)
@@ -46,6 +56,19 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *InvocationConte
 		eventChan <- event
 	}()
 	return eventChan, nil
+}
+
+func (m *mockAgent) Run(ctx context.Context, invocationCtx *InvocationContext) ([]*Event, error) {
+	stream, err := m.RunAsync(ctx, invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*Event
+	for event := range stream {
+		events = append(events, event)
+	}
+	return events, nil
 }
 
 type mockTool struct {
@@ -101,7 +124,11 @@ func TestBaseAgentInterface(t *testing.T) {
 		t.Errorf("Expected 1 sub-agent, got %d", len(agent.SubAgents()))
 	}
 
-	if subAgent.ParentAgent() != agent {
+	if subAgent.ParentAgent() == nil {
+		t.Error("Sub-agent parent should be set")
+	}
+
+	if subAgent.ParentAgent().Name() != agent.Name() {
 		t.Error("Sub-agent parent should be set to main agent")
 	}
 }

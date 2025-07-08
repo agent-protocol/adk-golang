@@ -291,6 +291,131 @@ type InvocationContext struct {
 	EndInvocation     bool
 }
 
+// NewInvocationContext creates a new invocation context.
+func NewInvocationContext(
+	invocationID string,
+	agent BaseAgent,
+	session *Session,
+	sessionService SessionService,
+) *InvocationContext {
+	return &InvocationContext{
+		InvocationID:   invocationID,
+		Agent:          agent,
+		Session:        session,
+		SessionService: sessionService,
+		RunConfig:      &RunConfig{},
+	}
+}
+
+// WithArtifactService sets the artifact service for this context.
+func (ctx *InvocationContext) WithArtifactService(service ArtifactService) *InvocationContext {
+	ctx.ArtifactService = service
+	return ctx
+}
+
+// WithMemoryService sets the memory service for this context.
+func (ctx *InvocationContext) WithMemoryService(service MemoryService) *InvocationContext {
+	ctx.MemoryService = service
+	return ctx
+}
+
+// WithCredentialService sets the credential service for this context.
+func (ctx *InvocationContext) WithCredentialService(service CredentialService) *InvocationContext {
+	ctx.CredentialService = service
+	return ctx
+}
+
+// WithUserContent sets the user content for this context.
+func (ctx *InvocationContext) WithUserContent(content *Content) *InvocationContext {
+	ctx.UserContent = content
+	return ctx
+}
+
+// WithBranch sets the branch for this context.
+func (ctx *InvocationContext) WithBranch(branch string) *InvocationContext {
+	ctx.Branch = &branch
+	return ctx
+}
+
+// WithRunConfig sets the run configuration for this context.
+func (ctx *InvocationContext) WithRunConfig(config *RunConfig) *InvocationContext {
+	ctx.RunConfig = config
+	return ctx
+}
+
+// GetBranch returns the branch path, or empty string if none.
+func (ctx *InvocationContext) GetBranch() string {
+	if ctx.Branch == nil {
+		return ""
+	}
+	return *ctx.Branch
+}
+
+// HasArtifactService checks if an artifact service is available.
+func (ctx *InvocationContext) HasArtifactService() bool {
+	return ctx.ArtifactService != nil
+}
+
+// HasMemoryService checks if a memory service is available.
+func (ctx *InvocationContext) HasMemoryService() bool {
+	return ctx.MemoryService != nil
+}
+
+// HasCredentialService checks if a credential service is available.
+func (ctx *InvocationContext) HasCredentialService() bool {
+	return ctx.CredentialService != nil
+}
+
+// IsEndInvocation checks if this should end the invocation.
+func (ctx *InvocationContext) IsEndInvocation() bool {
+	return ctx.EndInvocation
+}
+
+// SetEndInvocation marks this invocation as ending.
+func (ctx *InvocationContext) SetEndInvocation(end bool) {
+	ctx.EndInvocation = end
+}
+
+// Clone creates a copy of the invocation context with the same services but potentially different agent/session.
+func (ctx *InvocationContext) Clone() *InvocationContext {
+	clone := &InvocationContext{
+		InvocationID:      ctx.InvocationID,
+		Agent:             ctx.Agent,
+		Session:           ctx.Session,
+		SessionService:    ctx.SessionService,
+		ArtifactService:   ctx.ArtifactService,
+		MemoryService:     ctx.MemoryService,
+		CredentialService: ctx.CredentialService,
+		UserContent:       ctx.UserContent,
+		RunConfig:         ctx.RunConfig,
+		EndInvocation:     ctx.EndInvocation,
+	}
+
+	if ctx.Branch != nil {
+		branchCopy := *ctx.Branch
+		clone.Branch = &branchCopy
+	}
+
+	return clone
+}
+
+// CreateSubContext creates a new context for a sub-agent with the same services.
+func (ctx *InvocationContext) CreateSubContext(subAgent BaseAgent, subBranch string) *InvocationContext {
+	subCtx := ctx.Clone()
+	subCtx.Agent = subAgent
+
+	// Build hierarchical branch path
+	var newBranch string
+	if ctx.Branch != nil && *ctx.Branch != "" {
+		newBranch = *ctx.Branch + "." + subBranch
+	} else {
+		newBranch = subBranch
+	}
+	subCtx.Branch = &newBranch
+
+	return subCtx
+}
+
 // ToolContext provides context for tool execution.
 type ToolContext struct {
 	InvocationContext *InvocationContext
@@ -449,22 +574,6 @@ type RunRequest struct {
 	SessionID  string     `json:"session_id"`
 	NewMessage *Content   `json:"new_message"`
 	RunConfig  *RunConfig `json:"run_config,omitempty"`
-}
-
-// NewInvocationContext creates a new invocation context.
-func NewInvocationContext(
-	invocationID string,
-	agent BaseAgent,
-	session *Session,
-	sessionService SessionService,
-) *InvocationContext {
-	return &InvocationContext{
-		InvocationID:   invocationID,
-		Agent:          agent,
-		Session:        session,
-		SessionService: sessionService,
-		RunConfig:      &RunConfig{},
-	}
 }
 
 // NewToolContext creates a new tool context.

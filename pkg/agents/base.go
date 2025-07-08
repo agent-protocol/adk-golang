@@ -11,11 +11,13 @@ import (
 // BaseAgentImpl provides a basic implementation of the BaseAgent interface.
 // This can be embedded in concrete agent types.
 type BaseAgentImpl struct {
-	name        string
-	description string
-	instruction string
-	subAgents   []core.BaseAgent
-	parentAgent core.BaseAgent
+	name                string
+	description         string
+	instruction         string
+	subAgents           []core.BaseAgent
+	parentAgent         core.BaseAgent
+	beforeAgentCallback core.BeforeAgentCallback
+	afterAgentCallback  core.AfterAgentCallback
 }
 
 // NewBaseAgent creates a new base agent implementation.
@@ -68,6 +70,26 @@ func (a *BaseAgentImpl) SetParentAgent(parent core.BaseAgent) {
 	a.parentAgent = parent
 }
 
+// GetBeforeAgentCallback returns the before-agent callback.
+func (a *BaseAgentImpl) GetBeforeAgentCallback() core.BeforeAgentCallback {
+	return a.beforeAgentCallback
+}
+
+// SetBeforeAgentCallback sets the before-agent callback.
+func (a *BaseAgentImpl) SetBeforeAgentCallback(callback core.BeforeAgentCallback) {
+	a.beforeAgentCallback = callback
+}
+
+// GetAfterAgentCallback returns the after-agent callback.
+func (a *BaseAgentImpl) GetAfterAgentCallback() core.AfterAgentCallback {
+	return a.afterAgentCallback
+}
+
+// SetAfterAgentCallback sets the after-agent callback.
+func (a *BaseAgentImpl) SetAfterAgentCallback(callback core.AfterAgentCallback) {
+	a.afterAgentCallback = callback
+}
+
 // FindAgent searches for an agent by name in the hierarchy.
 func (a *BaseAgentImpl) FindAgent(name string) core.BaseAgent {
 	if a.name == name {
@@ -97,6 +119,13 @@ func (a *BaseAgentImpl) FindSubAgent(name string) core.BaseAgent {
 // RunAsync executes the agent with the given context and returns an event stream.
 // This is a base implementation that should be overridden by concrete agents.
 func (a *BaseAgentImpl) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	// Execute before-agent callback if present
+	if a.beforeAgentCallback != nil {
+		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
+			return nil, fmt.Errorf("before-agent callback failed: %w", err)
+		}
+	}
+
 	// Create a channel to stream events
 	eventChan := make(chan *core.Event, 10)
 
@@ -125,6 +154,28 @@ func (a *BaseAgentImpl) RunAsync(ctx context.Context, invocationCtx *core.Invoca
 	return eventChan, nil
 }
 
+// Run is a synchronous wrapper around RunAsync that collects all events.
+func (a *BaseAgentImpl) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(ctx, invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*core.Event
+	for event := range stream {
+		events = append(events, event)
+	}
+
+	// Execute after-agent callback if present
+	if a.afterAgentCallback != nil {
+		if err := a.afterAgentCallback(ctx, invocationCtx, events); err != nil {
+			return events, fmt.Errorf("after-agent callback failed: %w", err)
+		}
+	}
+
+	return events, nil
+}
+
 // Cleanup performs any necessary cleanup operations.
 func (a *BaseAgentImpl) Cleanup(ctx context.Context) error {
 	// Cleanup sub-agents
@@ -150,6 +201,13 @@ func NewSequentialAgent(name, description string) *SequentialAgent {
 
 // RunAsync executes sub-agents in sequence.
 func (a *SequentialAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	// Execute before-agent callback if present
+	if a.beforeAgentCallback != nil {
+		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
+			return nil, fmt.Errorf("before-agent callback failed: %w", err)
+		}
+	}
+
 	eventChan := make(chan *core.Event, 10)
 
 	go func() {
@@ -183,6 +241,28 @@ func (a *SequentialAgent) RunAsync(ctx context.Context, invocationCtx *core.Invo
 	}()
 
 	return eventChan, nil
+}
+
+// Run is a synchronous wrapper around RunAsync.
+func (a *SequentialAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(ctx, invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*core.Event
+	for event := range stream {
+		events = append(events, event)
+	}
+
+	// Execute after-agent callback if present
+	if a.afterAgentCallback != nil {
+		if err := a.afterAgentCallback(ctx, invocationCtx, events); err != nil {
+			return events, fmt.Errorf("after-agent callback failed: %w", err)
+		}
+	}
+
+	return events, nil
 }
 
 // LLMAgent represents an agent that uses a language model for reasoning.
@@ -235,6 +315,13 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 		return nil, fmt.Errorf("LLM connection not configured for agent %s", a.name)
 	}
 
+	// Execute before-agent callback if present
+	if a.beforeAgentCallback != nil {
+		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
+			return nil, fmt.Errorf("before-agent callback failed: %w", err)
+		}
+	}
+
 	eventChan := make(chan *core.Event, 10)
 
 	go func() {
@@ -269,6 +356,28 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 	}()
 
 	return eventChan, nil
+}
+
+// Run is a synchronous wrapper around RunAsync.
+func (a *LLMAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(ctx, invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*core.Event
+	for event := range stream {
+		events = append(events, event)
+	}
+
+	// Execute after-agent callback if present
+	if a.afterAgentCallback != nil {
+		if err := a.afterAgentCallback(ctx, invocationCtx, events); err != nil {
+			return events, fmt.Errorf("after-agent callback failed: %w", err)
+		}
+	}
+
+	return events, nil
 }
 
 // buildLLMRequest constructs an LLM request from the session context.

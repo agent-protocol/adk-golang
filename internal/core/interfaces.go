@@ -8,6 +8,12 @@ import (
 // EventStream represents a stream of events from agent execution.
 type EventStream <-chan *Event
 
+// BeforeAgentCallback is called before an agent starts executing.
+type BeforeAgentCallback func(ctx context.Context, invocationCtx *InvocationContext) error
+
+// AfterAgentCallback is called after an agent finishes executing.
+type AfterAgentCallback func(ctx context.Context, invocationCtx *InvocationContext, events []*Event) error
+
 // BaseAgent defines the interface that all agents must implement.
 type BaseAgent interface {
 	// Name returns the agent's unique identifier.
@@ -32,11 +38,28 @@ type BaseAgent interface {
 	// This is the main entry point for agent execution.
 	RunAsync(ctx context.Context, invocationCtx *InvocationContext) (EventStream, error)
 
+	// Run is a synchronous wrapper around RunAsync that collects all events.
+	Run(ctx context.Context, invocationCtx *InvocationContext) ([]*Event, error)
+
 	// FindAgent searches for an agent by name in the hierarchy.
+	// Returns nil if not found.
 	FindAgent(name string) BaseAgent
 
 	// FindSubAgent searches for a direct sub-agent by name.
+	// Returns nil if not found.
 	FindSubAgent(name string) BaseAgent
+
+	// GetBeforeAgentCallback returns the before-agent callback.
+	GetBeforeAgentCallback() BeforeAgentCallback
+
+	// SetBeforeAgentCallback sets the before-agent callback.
+	SetBeforeAgentCallback(callback BeforeAgentCallback)
+
+	// GetAfterAgentCallback returns the after-agent callback.
+	GetAfterAgentCallback() AfterAgentCallback
+
+	// SetAfterAgentCallback sets the after-agent callback.
+	SetAfterAgentCallback(callback AfterAgentCallback)
 
 	// Cleanup performs any necessary cleanup operations.
 	Cleanup(ctx context.Context) error
