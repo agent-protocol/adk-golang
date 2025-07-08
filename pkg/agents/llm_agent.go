@@ -5,12 +5,54 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
+
+var malformedJSONRegex = regexp.MustCompile(`^[",}{\]]+$`)
+
+// cleanLLMResponse filters out malformed text parts from LLM responses
+func (a *EnhancedLlmAgent) cleanLLMResponse(content *core.Content) *core.Content {
+	if content == nil {
+		return content
+	}
+
+	cleanedParts := make([]core.Part, 0, len(content.Parts))
+
+	// Filter parts
+	for _, part := range content.Parts {
+		if part.Type == "text" && part.Text != nil {
+			text := strings.TrimSpace(*part.Text)
+
+			// Skip empty text
+			if text == "" {
+				continue
+			}
+
+			// Only filter out specific malformed JSON fragments, not all text
+			if malformedJSONRegex.MatchString(text) ||
+				(strings.Contains(text, `"parameters"`) && len(text) < 50) || // Only filter short parameter fragments
+				text == `"},"` ||
+				text == `}},` ||
+				strings.HasPrefix(text, `",`) ||
+				strings.HasSuffix(text, `"}`) && len(text) < 20 {
+				log.Printf("Filtering out malformed text part: %q", text)
+				continue
+			}
+		}
+
+		cleanedParts = append(cleanedParts, part)
+	}
+
+	return &core.Content{
+		Role:  content.Role,
+		Parts: cleanedParts,
+	}
+}
 
 // formatContent formats Content for logging, showing actual text instead of pointers
 func formatContent(content *core.Content) string {
@@ -327,7 +369,10 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 
 		// Create event from LLM response
 		event := core.NewEvent(invocationCtx.InvocationID, a.name)
-		event.Content = response.Content
+
+		// Clean up the response content before creating the event
+		cleanedContent := a.cleanLLMResponse(response.Content)
+		event.Content = cleanedContent
 
 		// Log the LLM agent's response
 		if response.Content != nil {
@@ -442,16 +487,64 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		}
 
 		// Check for repeated tool patterns to prevent infinite loops
-		if turn > 1 && a.isRepeatingToolCalls(invocationCtx.Session.Events) {
+		if turn > 2 && a.isRepeatingToolCalls(invocationCtx.Session.Events) {
 			log.Println("Detected repeating tool call pattern. Breaking out of loop.")
-			// Send final response
+
+			// Extract the last function result and create a meaningful response
+			var finalResponse string
+
+			// Look for the most recent function response in the session
+			for i := len(invocationCtx.Session.Events) - 1; i >= 0; i-- {
+				event := invocationCtx.Session.Events[i]
+				if event.Content != nil && event.Content.Role == "agent" {
+					for _, part := range event.Content.Parts {
+						if part.Type == "function_response" && part.FunctionResponse != nil {
+							funcName := part.FunctionResponse.Name
+							response := part.FunctionResponse.Response
+
+							// Create a meaningful response based on the function and its result
+							if funcName == "get_static_time" {
+								if time, ok := response["time"].(string); ok {
+									if date, ok := response["date"].(string); ok {
+										finalResponse = fmt.Sprintf("The current time is %s on %s.", time, date)
+									} else {
+										finalResponse = fmt.Sprintf("The current time is %s.", time)
+									}
+								}
+							} else if funcName == "get_current_time" {
+								// Handle other time functions similarly
+								finalResponse = fmt.Sprintf("Based on the %s function, I've retrieved the current time information.", funcName)
+							} else {
+								// Generic response for other functions
+								finalResponse = fmt.Sprintf("I've successfully executed the %s function and retrieved the requested information.", funcName)
+							}
+
+							if finalResponse != "" {
+								break
+							}
+						}
+					}
+					if finalResponse != "" {
+						break
+					}
+				}
+			}
+
+			// Fallback if we couldn't extract a meaningful response
+			if finalResponse == "" {
+				finalResponse = "I've completed the tool execution. Based on the results, I can provide you with the information you requested."
+			}
+
+			log.Printf("Generated final response: %s", finalResponse)
+
+			// Create and send the final response
 			finalEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
 			finalEvent.Content = &core.Content{
 				Role: "assistant",
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: ptr.Ptr("I've completed the tool execution. Based on the results, I can provide you with the information you requested."),
+						Text: ptr.Ptr(finalResponse),
 					},
 				},
 			}

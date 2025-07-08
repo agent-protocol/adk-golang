@@ -360,7 +360,20 @@ func (w *WebUIHandler) HandleIndex(writer http.ResponseWriter, req *http.Request
             if (content.parts) {
                 for (const part of content.parts) {
                     if (part.text) {
-                        return part.text;
+                        // Filter out malformed JSON fragments and empty text
+                        const text = part.text.trim();
+                        
+                        // Skip if it's empty
+                        if (!text) continue;
+                        
+                        // Skip if it looks like a malformed JSON fragment
+                        if (text.match(/^[",}{\]]+$/) || 
+                            text.includes('"parameters"') ||
+                            text.match(/^["',\s]*$/)) {
+                            continue;
+                        }
+                        
+                        return text;
                     }
                 }
             }

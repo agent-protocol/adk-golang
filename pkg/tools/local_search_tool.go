@@ -57,7 +57,7 @@ type DuckDuckGoResponse struct {
 // NewDuckDuckGoSearchTool creates a new local search tool
 func NewDuckDuckGoSearchTool() *DuckDuckGoSearchTool {
 	return &DuckDuckGoSearchTool{
-		BaseToolImpl: NewBaseTool("google_search", "Search the web for current information"),
+		BaseToolImpl: NewBaseTool("duckduckgo_search", "Search the web for current information"),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},

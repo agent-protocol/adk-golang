@@ -108,7 +108,7 @@ func init() {
 		func(location string) map[string]interface{} {
 			return map[string]interface{}{
 				"suggestion": "I'll search for current weather information for " + location,
-				"note":       "Use google_search to find the most current weather data",
+				"note":       "Use duckduckgo_search to find the most current weather data",
 			}
 		},
 	)
