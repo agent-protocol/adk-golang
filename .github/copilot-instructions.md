@@ -32,6 +32,7 @@ And we're working to implement an Golang API.
 - Compatible with existing A2A agents
 
 # Coding Standards
+- Follow SOLID principles
 - Follow Go idioms and best practices
 - Use gofmt for formatting
 - Use go vet and static analysis tools
