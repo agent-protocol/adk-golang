@@ -2,10 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/urfave/cli/v2"
+
+	"github.com/agent-protocol/adk-golang/pkg/api"
 )
 
 // webCommand creates the 'web' command
@@ -48,7 +51,6 @@ func webCommandAction(c *cli.Context) error {
 	logLevel := c.String("log-level")
 	allowOrigins := c.StringSlice("allow-origins")
 	traceToCloud := c.Bool("trace-to-cloud")
-	reload := c.Bool("reload")
 	a2a := c.Bool("a2a")
 
 	// Service URIs
@@ -68,33 +70,38 @@ func webCommandAction(c *cli.Context) error {
 		fmt.Printf("A2A endpoint: enabled\n")
 	}
 
-	// TODO: Implement web server startup
-	// This would involve:
-	// 1. Setting up HTTP routes for agent API
-	// 2. Serving static web UI files
-	// 3. Implementing WebSocket support for real-time communication
-	// 4. Setting up CORS and other middleware
-	// 5. Starting the server
-
-	fmt.Printf("Web server implementation not yet complete.\n")
-	fmt.Printf("Configuration would be:\n")
-	fmt.Printf("  Host: %s\n", host)
-	fmt.Printf("  Port: %d\n", port)
-	fmt.Printf("  Reload: %v\n", reload)
-	fmt.Printf("  Trace to cloud: %v\n", traceToCloud)
-
-	if sessionServiceURI != "" {
-		fmt.Printf("  Session service: %s\n", sessionServiceURI)
-	}
-	if artifactServiceURI != "" {
-		fmt.Printf("  Artifact service: %s\n", artifactServiceURI)
-	}
-	if memoryServiceURI != "" {
-		fmt.Printf("  Memory service: %s\n", memoryServiceURI)
-	}
-	if evalStorageURI != "" {
-		fmt.Printf("  Eval storage: %s\n", evalStorageURI)
+	// Create server configuration
+	config := &api.ServerConfig{
+		Host:               host,
+		Port:               port,
+		AgentsDir:          absAgentsDir,
+		SessionServiceURI:  sessionServiceURI,
+		ArtifactServiceURI: artifactServiceURI,
+		MemoryServiceURI:   memoryServiceURI,
+		EvalStorageURI:     evalStorageURI,
+		AllowOrigins:       allowOrigins,
+		TraceToCloud:       traceToCloud,
+		A2AEnabled:         a2a,
+		LogLevel:           logLevel,
 	}
 
-	return fmt.Errorf("web command not yet implemented")
+	// Create and start server
+	server, err := api.NewServer(config)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	// Setup web UI routes
+	server.SetupWebRoutes()
+
+	fmt.Printf("🚀 Web UI available at: http://%s:%d\n", host, port)
+	fmt.Printf("📁 Serving agents from: %s\n", absAgentsDir)
+
+	// Start the server
+	log.Printf("Starting web server...")
+	if err := server.Start(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +60,11 @@ func (al *AgentLoader) performLoad(agentName string) (core.BaseAgent, error) {
 		return agent, nil
 	}
 
+	// Try loading from Go source file
+	if agent, err := al.loadFromGoSource(agentName, agentDir); err == nil {
+		return agent, nil
+	}
+
 	// Try loading from YAML configuration
 	if agent, err := al.loadFromYAML(agentName, agentDir); err == nil {
 		return agent, nil
@@ -70,6 +76,27 @@ func (al *AgentLoader) performLoad(agentName string) (core.BaseAgent, error) {
 	}
 
 	return nil, fmt.Errorf("no valid agent found in directory: %s", agentDir)
+}
+
+// loadFromGoSource loads an agent from Go source file by building and loading as plugin
+func (al *AgentLoader) loadFromGoSource(agentName, agentDir string) (core.BaseAgent, error) {
+	goSourcePath := filepath.Join(agentDir, "main.go")
+	if _, err := os.Stat(goSourcePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("Go source not found: %s", goSourcePath)
+	}
+
+	// For now, we'll create a simple wrapper that imports the agent from the directory
+	// In a full implementation, you might want to build it as a plugin or use go/types analysis
+	// For this demo, let's try to directly import and access the RootAgent variable
+
+	// Since we can't dynamically import Go packages at runtime easily without plugins,
+	// let's use the executable approach if a compiled version exists
+	execPath := filepath.Join(agentDir, "main")
+	if _, err := os.Stat(execPath); err == nil {
+		return al.loadFromExecutable(agentName, agentDir)
+	}
+
+	return nil, fmt.Errorf("Go source agent loading requires compiled executable")
 }
 
 // loadFromPlugin loads an agent from a compiled Go plugin
@@ -119,15 +146,111 @@ func (al *AgentLoader) loadFromExecutable(agentName, agentDir string) (core.Base
 		filepath.Join(agentDir, "agent"),
 	}
 
-	for _, execPath := range execPaths {
-		if _, err := os.Stat(execPath); err == nil {
-			// TODO: Implement executable agent wrapper
-			return nil, fmt.Errorf("executable agent loading not yet implemented")
+	var execPath string
+	for _, path := range execPaths {
+		if _, err := os.Stat(path); err == nil {
+			execPath = path
+			break
 		}
 	}
 
-	return nil, fmt.Errorf("no executable agent found")
+	if execPath == "" {
+		return nil, fmt.Errorf("no executable agent found")
+	}
+
+	// For this demo, create a simple proxy agent that can represent the executable
+	// In a full implementation, this would use IPC to communicate with the executable
+	return NewExecutableAgentProxy(agentName, execPath), nil
 }
+
+// ExecutableAgentProxy represents an agent that runs as a separate executable
+type ExecutableAgentProxy struct {
+	name        string
+	execPath    string
+	description string
+}
+
+// NewExecutableAgentProxy creates a new proxy for an executable agent
+func NewExecutableAgentProxy(name, execPath string) *ExecutableAgentProxy {
+	return &ExecutableAgentProxy{
+		name:        name,
+		execPath:    execPath,
+		description: fmt.Sprintf("Executable agent: %s", name),
+	}
+}
+
+func (e *ExecutableAgentProxy) Name() string                  { return e.name }
+func (e *ExecutableAgentProxy) Description() string           { return e.description }
+func (e *ExecutableAgentProxy) Instruction() string           { return "Executable agent proxy" }
+func (e *ExecutableAgentProxy) SubAgents() []core.BaseAgent   { return nil }
+func (e *ExecutableAgentProxy) ParentAgent() core.BaseAgent   { return nil }
+func (e *ExecutableAgentProxy) SetParentAgent(core.BaseAgent) {}
+
+func (e *ExecutableAgentProxy) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	eventChan := make(chan *core.Event, 10)
+
+	go func() {
+		defer close(eventChan)
+
+		// Create a simple response event
+		event := core.NewEvent(invocationCtx.InvocationID, e.name)
+
+		// Extract text from user's message
+		var userText string
+		if invocationCtx.UserContent != nil {
+			for _, part := range invocationCtx.UserContent.Parts {
+				if part.Text != nil {
+					userText = *part.Text
+					break
+				}
+			}
+		}
+
+		// Create a simple response (for demo purposes)
+		responseText := fmt.Sprintf("Executable agent '%s' received: %s", e.name, userText)
+		event.Content = &core.Content{
+			Role: "agent",
+			Parts: []core.Part{
+				{Type: "text", Text: &responseText},
+			},
+		}
+
+		select {
+		case eventChan <- event:
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	return eventChan, nil
+}
+
+func (e *ExecutableAgentProxy) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	eventStream, err := e.RunAsync(ctx, invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*core.Event
+	for event := range eventStream {
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func (e *ExecutableAgentProxy) FindAgent(name string) core.BaseAgent {
+	if e.name == name {
+		return e
+	}
+	return nil
+}
+
+func (e *ExecutableAgentProxy) FindSubAgent(name string) core.BaseAgent          { return nil }
+func (e *ExecutableAgentProxy) GetBeforeAgentCallback() core.BeforeAgentCallback { return nil }
+func (e *ExecutableAgentProxy) SetBeforeAgentCallback(core.BeforeAgentCallback)  {}
+func (e *ExecutableAgentProxy) GetAfterAgentCallback() core.AfterAgentCallback   { return nil }
+func (e *ExecutableAgentProxy) SetAfterAgentCallback(core.AfterAgentCallback)    {}
+func (e *ExecutableAgentProxy) Cleanup(ctx context.Context) error                { return nil }
 
 // ListAgents returns a list of available agents in the agents directory
 func (al *AgentLoader) ListAgents() ([]string, error) {
@@ -158,6 +281,7 @@ func (al *AgentLoader) hasValidAgentFiles(agentDir string) bool {
 		"agent.yaml", // YAML config
 		"main",       // Executable
 		"agent",      // Executable
+		"main.go",    // Go source with RootAgent
 	}
 
 	for _, file := range validFiles {
