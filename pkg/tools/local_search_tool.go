@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -83,27 +84,34 @@ func (t *DuckDuckGoSearchTool) GetDeclaration() *core.FunctionDeclaration {
 
 // RunAsync executes the search
 func (t *DuckDuckGoSearchTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+	log.Println("Starting RunAsync for DuckDuckGoSearchTool...")
 	// Extract query from args
 	queryInterface, ok := args["query"]
 	if !ok {
+		log.Println("Missing required parameter 'query'")
 		return nil, fmt.Errorf("missing required parameter 'query'")
 	}
 
 	query, ok := queryInterface.(string)
 	if !ok {
+		log.Println("Parameter 'query' must be a string")
 		return nil, fmt.Errorf("parameter 'query' must be a string")
 	}
 
 	if query == "" {
+		log.Println("Query cannot be empty")
 		return nil, fmt.Errorf("query cannot be empty")
 	}
 
+	log.Printf("Performing search for query: %s", query)
 	// Perform search
 	results, err := t.search(ctx, query)
 	if err != nil {
+		log.Printf("Search failed: %v", err)
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
+	log.Println("Search completed successfully.")
 	return results, nil
 }
 

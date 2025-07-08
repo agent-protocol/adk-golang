@@ -3,6 +3,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 var RootAgent core.BaseAgent
 
 func init() {
+	log.Println("Initializing DuckDuckGo Search Agent...")
+
 	// Get model name from environment or use default
 	modelName := os.Getenv("OLLAMA_MODEL")
 	if modelName == "" {
@@ -62,11 +65,13 @@ func init() {
 	// Set the LLM connection
 	agent.SetLLMConnection(ollamaConnection)
 
-	// Set instruction to match the Python tutorial
-	agent.SetInstruction("You are an expert researcher. You always stick to the facts. When users ask questions, first use the google_search tool to find current and accurate information, then provide a comprehensive answer based on the search results. Always provide a final response to the user after using tools - do not keep searching repeatedly for the same information.")
+	// Set instruction for better tool usage
+	agent.SetInstruction("You are an expert assistant. When users ask questions, use the appropriate tools available to you. If they ask for time information, use the time tools. If they need search results, use the search tool. After using any tool, always provide a clear, final response to the user based on the tool results. Do not repeatedly call the same tool - use the results from the first call to answer the user's question.")
 
 	// Add the local search tool (equivalent to google_search in Python)
 	searchTool := tools.NewDuckDuckGoSearchTool()
+	log.Println("Adding tools to the agent...")
+	log.Println("Adding DuckDuckGo Search Tool...")
 	agent.AddTool(searchTool)
 
 	// Add some additional useful tools for demonstration
@@ -89,8 +94,11 @@ func init() {
 			}
 		},
 	)
+	log.Println("Adding Time Tool...")
 	if err == nil {
 		agent.AddTool(timeTool)
+	} else {
+		log.Printf("Failed to add Time Tool: %v", err)
 	}
 
 	// Weather helper tool (mock implementation for demo)
@@ -104,9 +112,35 @@ func init() {
 			}
 		},
 	)
+	log.Println("Adding Weather Tool...")
 	if err == nil {
 		agent.AddTool(weatherTool)
+	} else {
+		log.Printf("Failed to add Weather Tool: %v", err)
 	}
+
+	// Static Time tool for testing without parameters
+	staticTimeTool, err := tools.NewFunctionTool(
+		"get_static_time",
+		"Gets the current server time without requiring any parameters",
+		func() map[string]interface{} {
+			now := time.Now()
+			return map[string]interface{}{
+				"time":     now.Format("3:04 PM"),
+				"date":     now.Format("Monday, January 2, 2006"),
+				"timezone": now.Format("MST"),
+				"iso":      now.Format(time.RFC3339),
+			}
+		},
+	)
+	log.Println("Adding Static Time Tool...")
+	if err == nil {
+		agent.AddTool(staticTimeTool)
+	} else {
+		log.Printf("Failed to add Static Time Tool: %v", err)
+	}
+
+	log.Println("DuckDuckGo Search Agent initialization complete.")
 
 	// Set the global RootAgent
 	RootAgent = agent

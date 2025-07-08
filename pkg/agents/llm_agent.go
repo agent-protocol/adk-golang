@@ -12,6 +12,83 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+// formatContent formats Content for logging, showing actual text instead of pointers
+func formatContent(content *core.Content) string {
+	if content == nil {
+		return "<nil>"
+	}
+
+	parts := make([]string, 0, len(content.Parts))
+	for i, part := range content.Parts {
+		switch part.Type {
+		case "text":
+			if part.Text != nil {
+				parts = append(parts, fmt.Sprintf("Part[%d]:text=%q", i, *part.Text))
+			} else {
+				parts = append(parts, fmt.Sprintf("Part[%d]:text=<nil>", i))
+			}
+		case "function_call":
+			if part.FunctionCall != nil {
+				parts = append(parts, fmt.Sprintf("Part[%d]:function_call={name=%s, args=%+v}", i, part.FunctionCall.Name, part.FunctionCall.Args))
+			} else {
+				parts = append(parts, fmt.Sprintf("Part[%d]:function_call=<nil>", i))
+			}
+		case "function_response":
+			if part.FunctionResponse != nil {
+				parts = append(parts, fmt.Sprintf("Part[%d]:function_response={name=%s, response=%+v}", i, part.FunctionResponse.Name, part.FunctionResponse.Response))
+			} else {
+				parts = append(parts, fmt.Sprintf("Part[%d]:function_response=<nil>", i))
+			}
+		default:
+			parts = append(parts, fmt.Sprintf("Part[%d]:type=%s", i, part.Type))
+		}
+	}
+
+	return fmt.Sprintf("Content{role=%s, parts=[%s]}", content.Role, strings.Join(parts, ", "))
+}
+
+// isRepeatingToolCalls checks if the agent is stuck in a loop of repeated tool calls
+func (a *EnhancedLlmAgent) isRepeatingToolCalls(events []*core.Event) bool {
+	if len(events) < 4 { // Need at least 2 tool call cycles
+		return false
+	}
+
+	// Look for pattern where the same function is called multiple times in a row
+	var lastFunctionName string
+	consecutiveCallCount := 0
+
+	// Check the last few events for repeated function calls
+	for i := len(events) - 1; i >= 0 && i >= len(events)-6; i-- {
+		if events[i].Content == nil {
+			continue
+		}
+
+		if events[i].Content.Role == "assistant" {
+			functionCalls := events[i].GetFunctionCalls()
+			if len(functionCalls) > 0 {
+				currentFunctionName := functionCalls[0].Name
+				if lastFunctionName == "" {
+					lastFunctionName = currentFunctionName
+					consecutiveCallCount = 1
+				} else if lastFunctionName == currentFunctionName {
+					consecutiveCallCount++
+					// If we see the same function called 3 times in a row, it's a loop
+					if consecutiveCallCount >= 3 {
+						log.Printf("Detected loop: function %s called %d times consecutively", currentFunctionName, consecutiveCallCount)
+						return true
+					}
+				} else {
+					// Different function, reset counter
+					lastFunctionName = currentFunctionName
+					consecutiveCallCount = 1
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // LlmAgentConfig contains configuration options for LLM agents.
 type LlmAgentConfig struct {
 	Model             string        `json:"model"`
@@ -162,7 +239,9 @@ func (a *EnhancedLlmAgent) SetOutputSchema(schema interface{}) {
 
 // RunAsync executes the LLM agent with comprehensive tool execution pipeline.
 func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	log.Printf("Starting RunAsync for agent: %s", a.name)
 	if a.llmConnection == nil {
+		log.Printf("LLM connection not configured for agent: %s", a.name)
 		return nil, fmt.Errorf("LLM connection not configured for agent %s", a.name)
 	}
 
@@ -178,7 +257,9 @@ func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.Inv
 	go func() {
 		defer close(eventChan)
 
+		log.Println("Executing conversation flow...")
 		if err := a.executeConversationFlow(ctx, invocationCtx, eventChan); err != nil {
+			log.Printf("Conversation flow failed: %v", err)
 			// Send error event
 			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
 			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Conversation flow failed: %v", err))
@@ -191,15 +272,20 @@ func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.Inv
 		}
 	}()
 
+	log.Println("RunAsync completed.")
 	return eventChan, nil
 }
 
 // executeConversationFlow manages the complete conversation flow including tool execution.
 func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
+	log.Println("Starting conversation flow...")
 	maxTurns := 10 // Default max turns to prevent infinite loops
 	if invocationCtx.RunConfig != nil && invocationCtx.RunConfig.MaxTurns != nil {
 		maxTurns = *invocationCtx.RunConfig.MaxTurns
 	}
+
+	totalToolCalls := 0                            // Track total tool calls across the conversation
+	maxTotalToolCalls := a.config.MaxToolCalls * 2 // Allow some flexibility but prevent infinite loops
 
 	for turn := 0; turn < maxTurns; turn++ {
 		// Check context cancellation
@@ -209,9 +295,16 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		default:
 		}
 
+		// Log user input if present
+		if invocationCtx.UserContent != nil {
+			log.Printf("User input: %s", formatContent(invocationCtx.UserContent))
+		}
+
 		// Build LLM request from conversation history
+		log.Println("Building LLM request...")
 		request, err := a.buildLLMRequest(invocationCtx)
 		if err != nil {
+			log.Printf("Failed to build LLM request: %v", err)
 			return fmt.Errorf("failed to build LLM request: %w", err)
 		}
 
@@ -223,14 +316,23 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		}
 
 		// Make LLM call with retry logic
+		log.Println("Making LLM call...")
 		response, err := a.makeRetriableLLMCall(ctx, request)
 		if err != nil {
+			log.Printf("LLM request failed: %v", err)
 			return fmt.Errorf("LLM request failed: %w", err)
 		}
+
+		log.Printf("LLM response content: %s", formatContent(response.Content))
 
 		// Create event from LLM response
 		event := core.NewEvent(invocationCtx.InvocationID, a.name)
 		event.Content = response.Content
+
+		// Log the LLM agent's response
+		if response.Content != nil {
+			log.Printf("LLM agent response content: %s", formatContent(response.Content))
+		}
 
 		// Execute after-model callback
 		if a.callbacks.AfterModelCallback != nil {
@@ -256,9 +358,47 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 			break
 		}
 
+		// Check total tool calls limit to prevent infinite loops
+		totalToolCalls += len(functionCalls)
+		if totalToolCalls > maxTotalToolCalls {
+			log.Printf("Maximum total tool calls exceeded: %d (max: %d)", totalToolCalls, maxTotalToolCalls)
+			// Send final response indicating too many tool calls
+			finalEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
+			finalEvent.Content = &core.Content{
+				Role: "assistant",
+				Parts: []core.Part{
+					{
+						Type: "text",
+						Text: ptr.Ptr("I've reached the maximum number of tool calls. Let me provide a direct response based on the information I have."),
+					},
+				},
+			}
+			finalEvent.TurnComplete = ptr.Ptr(true)
+
+			select {
+			case eventChan <- finalEvent:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+
+			invocationCtx.Session.AddEvent(finalEvent)
+			break
+		}
+
 		// Handle function calls
 		if len(functionCalls) > a.config.MaxToolCalls {
 			return fmt.Errorf("too many tool calls: %d (max: %d)", len(functionCalls), a.config.MaxToolCalls)
+		}
+
+		// Validate function call arguments (allow empty args for no-parameter functions)
+		if len(functionCalls) > 0 {
+			for _, funcCall := range functionCalls {
+				if funcCall.Args == nil {
+					// Initialize empty args map for functions with no parameters
+					funcCall.Args = make(map[string]interface{})
+				}
+				log.Printf("Function call: %s with args: %+v", funcCall.Name, funcCall.Args)
+			}
 		}
 
 		// Send the function call event first
@@ -293,105 +433,122 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		// Add tool response event to session
 		invocationCtx.Session.AddEvent(responseEvent)
 
+		// Log session state for debugging
+		log.Printf("Session now has %d events. Last 3 events: ", len(invocationCtx.Session.Events))
+		for i := len(invocationCtx.Session.Events) - 1; i >= 0 && i >= len(invocationCtx.Session.Events)-3; i-- {
+			if invocationCtx.Session.Events[i].Content != nil {
+				log.Printf("  Event[%d]: role=%s, parts=%d", i, invocationCtx.Session.Events[i].Content.Role, len(invocationCtx.Session.Events[i].Content.Parts))
+			}
+		}
+
+		// Check for repeated tool patterns to prevent infinite loops
+		if turn > 1 && a.isRepeatingToolCalls(invocationCtx.Session.Events) {
+			log.Println("Detected repeating tool call pattern. Breaking out of loop.")
+			// Send final response
+			finalEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
+			finalEvent.Content = &core.Content{
+				Role: "assistant",
+				Parts: []core.Part{
+					{
+						Type: "text",
+						Text: ptr.Ptr("I've completed the tool execution. Based on the results, I can provide you with the information you requested."),
+					},
+				},
+			}
+			finalEvent.TurnComplete = ptr.Ptr(true)
+
+			select {
+			case eventChan <- finalEvent:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+
+			invocationCtx.Session.AddEvent(finalEvent)
+			break
+		}
+
 		// Continue the conversation loop to get the LLM's final response
 	}
 
+	log.Println("Conversation flow completed.")
 	return nil
 }
 
 // executeToolCalls executes all function calls and returns their responses.
 func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
+	log.Println("Starting tool execution...")
 	toolResponses := make([]core.Part, 0, len(functionCalls))
 
 	for _, funcCall := range functionCalls {
-		// Find the tool
+		log.Printf("Processing function call: %s", funcCall.Name)
 		tool, exists := a.toolMap[funcCall.Name]
 		if !exists {
+			log.Printf("Unknown tool: %s", funcCall.Name)
 			// Return error response for unknown tool
-			errorResponse := &core.FunctionResponse{
-				ID:   funcCall.ID,
-				Name: funcCall.Name,
-				Response: map[string]any{
-					"error": fmt.Sprintf("Unknown tool: %s", funcCall.Name),
-				},
-			}
-
 			toolResponses = append(toolResponses, core.Part{
-				Type:             "function_response",
-				FunctionResponse: errorResponse,
+				Type: "function_response",
+				FunctionResponse: &core.FunctionResponse{
+					ID:   funcCall.ID,
+					Name: funcCall.Name,
+					Response: map[string]any{
+						"error": fmt.Sprintf("Unknown tool: %s", funcCall.Name),
+					},
+				},
 			})
 			continue
 		}
 
-		// Execute before-tool callback
-		if a.callbacks.BeforeToolCallback != nil {
-			if err := a.callbacks.BeforeToolCallback(ctx, invocationCtx); err != nil {
-				log.Printf("Before-tool callback failed: %v", err)
-				// Continue execution but log the error
-			}
-		}
-
-		// Create tool context
+		log.Printf("Executing tool: %s", tool.Name())
 		toolCtx := core.NewToolContext(invocationCtx)
 		toolCtx.FunctionCallID = &funcCall.ID
 
-		// Execute tool with timeout
-		toolCtx.InvocationContext = invocationCtx
 		result, err := a.executeToolWithTimeout(ctx, tool, funcCall.Args, toolCtx)
-
-		// Execute after-tool callback
-		if a.callbacks.AfterToolCallback != nil {
-			if err := a.callbacks.AfterToolCallback(ctx, invocationCtx, []*core.Event{}); err != nil {
-				log.Printf("After-tool callback failed: %v", err)
-				// Continue execution but log the error
-			}
+		if err != nil {
+			log.Printf("Tool execution failed for %s: %v", tool.Name(), err)
+			toolResponses = append(toolResponses, core.Part{
+				Type: "function_response",
+				FunctionResponse: &core.FunctionResponse{
+					ID:   funcCall.ID,
+					Name: funcCall.Name,
+					Response: map[string]any{
+						"error": err.Error(),
+					},
+				},
+			})
+			continue
 		}
 
-		// Build tool response
-		var response *core.FunctionResponse
-		if err != nil {
-			response = &core.FunctionResponse{
-				ID:   funcCall.ID,
-				Name: funcCall.Name,
-				Response: map[string]any{
-					"error": err.Error(),
-				},
-			}
+		log.Printf("Tool execution succeeded for %s: %v", tool.Name(), result)
+
+		// Format the response properly for the LLM
+		var response map[string]any
+		if resultMap, ok := result.(map[string]interface{}); ok {
+			// If result is already a map, use it directly
+			response = resultMap
 		} else {
-			response = &core.FunctionResponse{
-				ID:   funcCall.ID,
-				Name: funcCall.Name,
-				Response: map[string]any{
-					"result": result,
-				},
+			// Otherwise wrap it in a result field
+			response = map[string]any{
+				"result": result,
 			}
 		}
 
 		toolResponses = append(toolResponses, core.Part{
-			Type:             "function_response",
-			FunctionResponse: response,
+			Type: "function_response",
+			FunctionResponse: &core.FunctionResponse{
+				ID:       funcCall.ID,
+				Name:     funcCall.Name,
+				Response: response,
+			},
 		})
 
 		// Apply any state changes from the tool
 		if len(toolCtx.Actions.StateDelta) > 0 {
+			log.Printf("Applying state delta from tool %s: %v", tool.Name(), toolCtx.Actions.StateDelta)
 			invocationCtx.Session.UpdateState(toolCtx.Actions.StateDelta)
-		}
-
-		// Handle long-running tools
-		if tool.IsLongRunning() {
-			// Create intermediate event for long-running tool
-			longRunningEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			longRunningEvent.LongRunningToolIDs = []string{funcCall.ID}
-			longRunningEvent.Partial = ptr.Ptr(true)
-
-			select {
-			case eventChan <- longRunningEvent:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
 		}
 	}
 
+	log.Println("Tool execution completed.")
 	return toolResponses, nil
 }
 
@@ -400,6 +557,11 @@ func (a *EnhancedLlmAgent) executeToolWithTimeout(ctx context.Context, tool core
 	// Create context with timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, a.config.ToolCallTimeout)
 	defer cancel()
+
+	log.Printf("Tool arguments: %+v", args)
+	if args == nil {
+		return nil, fmt.Errorf("tool arguments are nil")
+	}
 
 	// Execute tool
 	return tool.RunAsync(timeoutCtx, args, toolCtx)
@@ -462,6 +624,7 @@ func (a *EnhancedLlmAgent) isRetryableError(err error) bool {
 
 // buildLLMRequest constructs an LLM request from the session context.
 func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext) (*core.LLMRequest, error) {
+	log.Println("Building LLM request...")
 	contents := make([]core.Content, 0)
 
 	// Add system instruction if present
@@ -475,6 +638,7 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 				},
 			},
 		})
+		log.Printf("Added system instruction: %s", a.instruction)
 	}
 
 	// Add session history (excluding system messages from history)
@@ -494,6 +658,7 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 	for _, tool := range a.tools {
 		if decl := tool.GetDeclaration(); decl != nil {
 			tools = append(tools, decl)
+			log.Printf("Added tool declaration: %s", decl.Name)
 		}
 	}
 
@@ -507,6 +672,8 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 		Tools:             tools,
 		SystemInstruction: &a.instruction,
 	}
+
+	log.Printf("LLM Config: %+v", llmConfig)
 
 	return &core.LLMRequest{
 		Contents: contents,

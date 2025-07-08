@@ -3,6 +3,7 @@ package core
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 )
 
@@ -108,6 +109,7 @@ func randomString(length int) string {
 
 // GetFunctionCalls returns all function calls in the event content.
 func (e *Event) GetFunctionCalls() []*FunctionCall {
+	log.Println("Getting function calls from event...")
 	if e.Content == nil {
 		return nil
 	}
@@ -123,6 +125,7 @@ func (e *Event) GetFunctionCalls() []*FunctionCall {
 
 // GetFunctionResponses returns all function responses in the event content.
 func (e *Event) GetFunctionResponses() []*FunctionResponse {
+	log.Println("Getting function responses from event...")
 	if e.Content == nil {
 		return nil
 	}
@@ -138,6 +141,7 @@ func (e *Event) GetFunctionResponses() []*FunctionResponse {
 
 // IsFinalResponse determines if this event represents a final response.
 func (e *Event) IsFinalResponse() bool {
+	log.Println("Checking if event is a final response...")
 	if e.Actions.SkipSummarization != nil && *e.Actions.SkipSummarization {
 		return true
 	}

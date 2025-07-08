@@ -4,6 +4,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"log"
 	"reflect"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
@@ -128,9 +129,11 @@ func (t *FunctionTool) RunAsync(ctx context.Context, args map[string]any, toolCt
 	// Prepare function arguments
 	callArgs := make([]reflect.Value, fnType.NumIn())
 
+	log.Printf("Function %s called with arguments: %+v", t.name, args)
+
+	argIndex := 0 // Track non-context arguments
 	for i := 0; i < fnType.NumIn(); i++ {
 		paramType := fnType.In(i)
-		paramName := fmt.Sprintf("param%d", i) // This should be improved with actual parameter names
 
 		// Special handling for context.Context
 		if paramType == reflect.TypeOf((*context.Context)(nil)).Elem() {
@@ -144,9 +147,18 @@ func (t *FunctionTool) RunAsync(ctx context.Context, args map[string]any, toolCt
 			continue
 		}
 
-		// Get argument value from args map
+		// For regular parameters, look for them by index
+		paramName := fmt.Sprintf("param%d", argIndex)
+		argIndex++
+
+		// Check if argument is provided
 		if argValue, exists := args[paramName]; exists {
-			callArgs[i] = reflect.ValueOf(argValue)
+			// Convert and assign the argument
+			convertedValue, err := convertArgument(argValue, paramType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert argument %s: %w", paramName, err)
+			}
+			callArgs[i] = convertedValue
 		} else {
 			// Use zero value for missing arguments
 			callArgs[i] = reflect.Zero(paramType)
@@ -321,4 +333,50 @@ func mapGoTypeToJSONType(goType reflect.Type) string {
 	default:
 		return "string" // Default to string for unknown types
 	}
+}
+
+// convertArgument converts an interface{} value to the target type using reflection
+func convertArgument(value interface{}, targetType reflect.Type) (reflect.Value, error) {
+	if value == nil {
+		return reflect.Zero(targetType), nil
+	}
+
+	sourceValue := reflect.ValueOf(value)
+	sourceType := sourceValue.Type()
+
+	// If types match exactly, return as-is
+	if sourceType == targetType {
+		return sourceValue, nil
+	}
+
+	// If source type is convertible to target type
+	if sourceType.ConvertibleTo(targetType) {
+		return sourceValue.Convert(targetType), nil
+	}
+
+	// Handle some common conversions
+	switch targetType.Kind() {
+	case reflect.String:
+		return reflect.ValueOf(fmt.Sprintf("%v", value)), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if sourceType.Kind() == reflect.Float64 || sourceType.Kind() == reflect.Float32 {
+			// Convert float to int
+			floatVal := sourceValue.Float()
+			return reflect.ValueOf(int64(floatVal)).Convert(targetType), nil
+		}
+	case reflect.Float32, reflect.Float64:
+		if sourceType.Kind() >= reflect.Int && sourceType.Kind() <= reflect.Int64 {
+			// Convert int to float
+			intVal := sourceValue.Int()
+			return reflect.ValueOf(float64(intVal)).Convert(targetType), nil
+		}
+	case reflect.Bool:
+		if sourceType.Kind() == reflect.String {
+			str := sourceValue.String()
+			boolVal := str == "true" || str == "1" || str == "yes"
+			return reflect.ValueOf(boolVal), nil
+		}
+	}
+
+	return reflect.Zero(targetType), fmt.Errorf("cannot convert %v (%s) to %s", value, sourceType, targetType)
 }

@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -427,6 +428,7 @@ type ToolContext struct {
 
 // SaveArtifact saves an artifact and returns its version.
 func (tc *ToolContext) SaveArtifact(ctx context.Context, filename string, content []byte, mimeType string) (int, error) {
+	log.Printf("Saving artifact: filename=%s, mimeType=%s", filename, mimeType)
 	if tc.InvocationContext.ArtifactService == nil {
 		return 0, fmt.Errorf("artifact service not available")
 	}
@@ -445,6 +447,7 @@ func (tc *ToolContext) SaveArtifact(ctx context.Context, filename string, conten
 
 // LoadArtifact loads an artifact by filename and optional version.
 func (tc *ToolContext) LoadArtifact(ctx context.Context, filename string, version *int) ([]byte, error) {
+	log.Printf("Loading artifact: filename=%s, version=%v", filename, version)
 	if tc.InvocationContext.ArtifactService == nil {
 		return nil, fmt.Errorf("artifact service not available")
 	}
@@ -528,6 +531,7 @@ func (tc *ToolContext) SkipSummarization() {
 
 // SetState sets a value in the session state.
 func (tc *ToolContext) SetState(key string, value any) {
+	log.Printf("Setting state: key=%s, value=%v", key, value)
 	if tc.Actions.StateDelta == nil {
 		tc.Actions.StateDelta = make(map[string]any)
 	}
@@ -536,6 +540,7 @@ func (tc *ToolContext) SetState(key string, value any) {
 
 // GetState retrieves a value from the session state.
 func (tc *ToolContext) GetState(key string) (any, bool) {
+	log.Printf("Getting state for key: %s", key)
 	// First check the state delta
 	if tc.Actions.StateDelta != nil {
 		if value, exists := tc.Actions.StateDelta[key]; exists {
