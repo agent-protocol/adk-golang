@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // RunnerImpl implements the Runner interface.
@@ -323,16 +324,11 @@ func generateInvocationID() string {
 	return fmt.Sprintf("inv_%d", time.Now().UnixNano())
 }
 
-// stringPtr returns a pointer to a string literal.
-func stringPtr(s string) *string {
-	return &s
-}
-
 // sendErrorEvent sends an error event to the event channel.
 func (r *RunnerImpl) sendErrorEvent(eventChan chan<- *core.Event, ctx context.Context,
 	invocationCtx *core.InvocationContext, author, message string) {
 	errorEvent := core.NewEvent(invocationCtx.InvocationID, author)
-	errorEvent.ErrorMessage = stringPtr(message)
+	errorEvent.ErrorMessage = ptr.Ptr(message)
 
 	select {
 	case eventChan <- errorEvent:

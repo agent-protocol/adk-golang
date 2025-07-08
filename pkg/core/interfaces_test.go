@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // Mock implementations for testing
@@ -47,7 +49,7 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *InvocationConte
 			Content: &Content{
 				Role: "assistant",
 				Parts: []Part{
-					{Type: "text", Text: stringPtr("Hello from mock agent")},
+					{Type: "text", Text: ptr.Ptr("Hello from mock agent")},
 				},
 			},
 			Actions:   EventActions{},
@@ -89,14 +91,6 @@ func (m *mockTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *T
 
 func (m *mockTool) ProcessLLMRequest(ctx context.Context, toolCtx *ToolContext, request *LLMRequest) error {
 	return nil
-}
-
-func stringPtr(s string) *string {
-	return &s
-}
-
-func intPtr(i int) *int {
-	return &i
 }
 
 func TestBaseAgentInterface(t *testing.T) {
@@ -196,7 +190,7 @@ func TestEventStructure(t *testing.T) {
 		Content: &Content{
 			Role: "assistant",
 			Parts: []Part{
-				{Type: "text", Text: stringPtr("Test message")},
+				{Type: "text", Text: ptr.Ptr("Test message")},
 			},
 		},
 		Actions: EventActions{
@@ -302,11 +296,11 @@ func TestInvocationContext(t *testing.T) {
 		UserContent: &Content{
 			Role: "user",
 			Parts: []Part{
-				{Type: "text", Text: stringPtr("Hello")},
+				{Type: "text", Text: ptr.Ptr("Hello")},
 			},
 		},
 		RunConfig: &RunConfig{
-			MaxTurns: intPtr(10),
+			MaxTurns: ptr.Ptr(10),
 		},
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // MockRunner implements core.Runner for testing
@@ -62,7 +63,7 @@ func TestA2aAgentExecutor_Execute(t *testing.T) {
 					Parts: []core.Part{
 						{
 							Type: "text",
-							Text: stringPtr("Hello from test agent"),
+							Text: ptr.Ptr("Hello from test agent"),
 						},
 					},
 				},
@@ -84,7 +85,7 @@ func TestA2aAgentExecutor_Execute(t *testing.T) {
 			Parts: []a2a.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello, agent!"),
+					Text: ptr.Ptr("Hello, agent!"),
 				},
 			},
 		},
@@ -131,7 +132,7 @@ func TestA2aAgentExecutor_ExecuteWithError(t *testing.T) {
 			Parts: []a2a.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello, agent!"),
+					Text: ptr.Ptr("Hello, agent!"),
 				},
 			},
 		},
@@ -236,9 +237,4 @@ func TestSimpleEventQueue(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when enqueueing to closed queue")
 	}
-}
-
-// Helper function for creating string pointers
-func stringPtr(s string) *string {
-	return &s
 }

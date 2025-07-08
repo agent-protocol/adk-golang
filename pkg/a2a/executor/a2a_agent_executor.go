@@ -10,6 +10,7 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/a2a/converters"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // A2aAgentExecutorConfig contains configuration for the A2aAgentExecutor.
@@ -183,7 +184,7 @@ func (executor *A2aAgentExecutor) Execute(ctx context.Context, requestCtx *Reque
 			Status: a2a.TaskStatus{
 				State:     a2a.TaskStateSubmitted,
 				Message:   requestCtx.Message,
-				Timestamp: timePtr(time.Now()),
+				Timestamp: ptr.Ptr(time.Now()),
 			},
 			Final: false,
 		}
@@ -200,7 +201,7 @@ func (executor *A2aAgentExecutor) Execute(ctx context.Context, requestCtx *Reque
 			Status: a2a.TaskStatus{
 				State:     a2a.TaskStateFailed,
 				Message:   createErrorMessage(err.Error()),
-				Timestamp: timePtr(time.Now()),
+				Timestamp: ptr.Ptr(time.Now()),
 			},
 			Final: true,
 		}
@@ -221,7 +222,7 @@ func (executor *A2aAgentExecutor) Cancel(ctx context.Context, requestCtx *Reques
 		ID: requestCtx.TaskID,
 		Status: a2a.TaskStatus{
 			State:     a2a.TaskStateCanceled,
-			Timestamp: timePtr(time.Now()),
+			Timestamp: ptr.Ptr(time.Now()),
 		},
 		Final: true,
 	}
@@ -261,7 +262,7 @@ func (executor *A2aAgentExecutor) handleRequest(ctx context.Context, requestCtx 
 		ID: requestCtx.TaskID,
 		Status: a2a.TaskStatus{
 			State:     a2a.TaskStateWorking,
-			Timestamp: timePtr(time.Now()),
+			Timestamp: ptr.Ptr(time.Now()),
 		},
 		Final:    false,
 		Metadata: createExecutionMetadata(runner, runArgs),
@@ -311,7 +312,7 @@ func (executor *A2aAgentExecutor) handleRequest(ctx context.Context, requestCtx 
 			ID: requestCtx.TaskID,
 			Status: a2a.TaskStatus{
 				State:     a2a.TaskStateCompleted,
-				Timestamp: timePtr(time.Now()),
+				Timestamp: ptr.Ptr(time.Now()),
 			},
 			Final: true,
 		}
@@ -337,12 +338,6 @@ func (executor *A2aAgentExecutor) prepareSession(ctx context.Context, requestCtx
 	}
 
 	return session, nil
-}
-
-// Helper functions
-
-func timePtr(t time.Time) *time.Time {
-	return &t
 }
 
 func createErrorMessage(errorText string) *a2a.Message {

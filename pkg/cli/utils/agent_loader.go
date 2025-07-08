@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"plugin"
 	"strings"
@@ -55,13 +56,13 @@ func (al *AgentLoader) performLoad(agentName string) (core.BaseAgent, error) {
 		return nil, fmt.Errorf("agent directory not found: %s", agentDir)
 	}
 
-	// Try loading from plugin (.so file)
-	if agent, err := al.loadFromPlugin(agentName, agentDir); err == nil {
+	// Try loading from Go source file first (build as plugin)
+	if agent, err := al.loadFromGoSource(agentName, agentDir); err == nil {
 		return agent, nil
 	}
 
-	// Try loading from Go source file
-	if agent, err := al.loadFromGoSource(agentName, agentDir); err == nil {
+	// Try loading from existing plugin (.so file)
+	if agent, err := al.loadFromPlugin(agentName, agentDir); err == nil {
 		return agent, nil
 	}
 
@@ -80,23 +81,42 @@ func (al *AgentLoader) performLoad(agentName string) (core.BaseAgent, error) {
 
 // loadFromGoSource loads an agent from Go source file by building and loading as plugin
 func (al *AgentLoader) loadFromGoSource(agentName, agentDir string) (core.BaseAgent, error) {
-	goSourcePath := filepath.Join(agentDir, "main.go")
-	if _, err := os.Stat(goSourcePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("Go source not found: %s", goSourcePath)
+	agentGoPath := filepath.Join(agentDir, "agent.go")
+	mainGoPath := filepath.Join(agentDir, "main.go")
+
+	var sourceFile string
+	if _, err := os.Stat(agentGoPath); err == nil {
+		sourceFile = agentGoPath
+	} else if _, err := os.Stat(mainGoPath); err == nil {
+		sourceFile = mainGoPath
+	} else {
+		return nil, fmt.Errorf("no Go source file found (agent.go or main.go)")
 	}
 
-	// For now, we'll create a simple wrapper that imports the agent from the directory
-	// In a full implementation, you might want to build it as a plugin or use go/types analysis
-	// For this demo, let's try to directly import and access the RootAgent variable
-
-	// Since we can't dynamically import Go packages at runtime easily without plugins,
-	// let's use the executable approach if a compiled version exists
-	execPath := filepath.Join(agentDir, "main")
-	if _, err := os.Stat(execPath); err == nil {
-		return al.loadFromExecutable(agentName, agentDir)
+	// Build the agent as a plugin
+	pluginPath := filepath.Join(agentDir, "agent.so")
+	if err := al.buildPlugin(sourceFile, pluginPath); err != nil {
+		return nil, fmt.Errorf("failed to build plugin: %w", err)
 	}
 
-	return nil, fmt.Errorf("Go source agent loading requires compiled executable")
+	// Load the plugin
+	return al.loadFromPlugin(agentName, agentDir)
+}
+
+// buildPlugin builds a Go source file as a plugin
+func (al *AgentLoader) buildPlugin(sourceFile, outputPath string) error {
+	// Use go build -buildmode=plugin to create the plugin
+	args := []string{"build", "-buildmode=plugin", "-o", outputPath, sourceFile}
+
+	// Execute go build command
+	cmd := exec.Command("go", args...)
+	cmd.Dir = filepath.Dir(sourceFile)
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("build failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
 }
 
 // loadFromPlugin loads an agent from a compiled Go plugin
@@ -116,12 +136,20 @@ func (al *AgentLoader) loadFromPlugin(agentName, agentDir string) (core.BaseAgen
 		return nil, fmt.Errorf("RootAgent not found in plugin: %w", err)
 	}
 
-	agent, ok := symAgent.(core.BaseAgent)
-	if !ok {
-		return nil, fmt.Errorf("RootAgent is not a BaseAgent")
+	// Try to cast to BaseAgent directly
+	if agent, ok := symAgent.(core.BaseAgent); ok {
+		return agent, nil
 	}
 
-	return agent, nil
+	// Try to cast to pointer to BaseAgent
+	if agentPtr, ok := symAgent.(*core.BaseAgent); ok {
+		if *agentPtr != nil {
+			return *agentPtr, nil
+		}
+		return nil, fmt.Errorf("RootAgent is nil")
+	}
+
+	return nil, fmt.Errorf("RootAgent is not a BaseAgent, got type: %T", symAgent)
 }
 
 // loadFromYAML loads an agent from YAML configuration
@@ -276,12 +304,13 @@ func (al *AgentLoader) ListAgents() ([]string, error) {
 // hasValidAgentFiles checks if a directory contains valid agent files
 func (al *AgentLoader) hasValidAgentFiles(agentDir string) bool {
 	validFiles := []string{
+		"agent.go",   // Go source (preferred)
+		"main.go",    // Go source alternative
 		"agent.so",   // Plugin
 		"agent.yml",  // YAML config
 		"agent.yaml", // YAML config
 		"main",       // Executable
 		"agent",      // Executable
-		"main.go",    // Go source with RootAgent
 	}
 
 	for _, file := range validFiles {

@@ -3,6 +3,8 @@ package core
 import (
 	"testing"
 	"time"
+
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 func TestSessionStateHelper_String(t *testing.T) {
@@ -333,7 +335,7 @@ func TestSession_GetMetrics(t *testing.T) {
 		Timestamp: time.Now(),
 		Content: &Content{
 			Parts: []Part{
-				{Text: StringPtr("Hello")},
+				{Text: ptr.Ptr("Hello")},
 			},
 		},
 	}
@@ -343,7 +345,7 @@ func TestSession_GetMetrics(t *testing.T) {
 		ID:           "event2",
 		Author:       "agent",
 		Timestamp:    time.Now(),
-		ErrorMessage: StringPtr("Test error"),
+		ErrorMessage: ptr.Ptr("Test error"),
 	}
 	session.AddEvent(event2)
 
@@ -459,9 +461,4 @@ func TestSession_DiffState(t *testing.T) {
 	if len(diff.Removed) != 1 || diff.Removed[0] != "key4" {
 		t.Errorf("Expected key4 to be removed, got %v", diff.Removed)
 	}
-}
-
-// Helper function for string pointers
-func StringPtr(s string) *string {
-	return &s
 }

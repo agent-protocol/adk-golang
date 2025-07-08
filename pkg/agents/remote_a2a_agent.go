@@ -11,6 +11,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // AgentCardResolutionError is raised when agent card resolution fails
@@ -335,7 +336,7 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr(fmt.Sprintf("Error constructing A2A message: %v", err)),
+						Text: ptr.Ptr(fmt.Sprintf("Error constructing A2A message: %v", err)),
 					},
 				},
 			}
@@ -362,7 +363,7 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr(fmt.Sprintf("Error sending message to remote agent: %v", err)),
+						Text: ptr.Ptr(fmt.Sprintf("Error sending message to remote agent: %v", err)),
 					},
 				},
 			}
@@ -384,7 +385,7 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr(fmt.Sprintf("Error converting A2A response: %v", err)),
+						Text: ptr.Ptr(fmt.Sprintf("Error converting A2A response: %v", err)),
 					},
 				},
 			}
@@ -462,7 +463,7 @@ func (r *RemoteA2aAgent) convertA2ATaskToEvent(task *a2a.Task, invocationCtx *co
 			Parts: []core.Part{
 				{
 					Type: "text",
-					Text: stringPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID, task.Status.State)),
+					Text: ptr.Ptr(fmt.Sprintf("Task %s completed with status: %s", task.ID, task.Status.State)),
 				},
 			},
 		}

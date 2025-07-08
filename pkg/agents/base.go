@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // BaseAgentImpl provides a basic implementation of the BaseAgent interface.
@@ -139,7 +140,7 @@ func (a *BaseAgentImpl) RunAsync(ctx context.Context, invocationCtx *core.Invoca
 			Parts: []core.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello from " + a.name),
+					Text: ptr.Ptr("Hello from " + a.name),
 				},
 			},
 		}
@@ -219,7 +220,7 @@ func (a *SequentialAgent) RunAsync(ctx context.Context, invocationCtx *core.Invo
 			if err != nil {
 				// Send error event
 				errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-				errorEvent.ErrorMessage = stringPtr(fmt.Sprintf("Error executing sub-agent %s: %v", subAgent.Name(), err))
+				errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Error executing sub-agent %s: %v", subAgent.Name(), err))
 
 				select {
 				case eventChan <- errorEvent:
@@ -334,7 +335,7 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 		response, err := a.llmConnection.GenerateContent(ctx, request)
 		if err != nil {
 			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			errorEvent.ErrorMessage = stringPtr(fmt.Sprintf("LLM request failed: %v", err))
+			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("LLM request failed: %v", err))
 
 			select {
 			case eventChan <- errorEvent:
@@ -426,9 +427,4 @@ func (a *LLMAgent) buildLLMRequest(invocationCtx *core.InvocationContext) *core.
 		},
 		Tools: tools,
 	}
-}
-
-// stringPtr returns a pointer to a string literal.
-func stringPtr(s string) *string {
-	return &s
 }

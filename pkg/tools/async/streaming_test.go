@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 func TestStreamingToolBasicExecution(t *testing.T) {
@@ -13,7 +14,7 @@ func TestStreamingToolBasicExecution(t *testing.T) {
 
 	ctx := context.Background()
 	toolCtx := &core.ToolContext{
-		FunctionCallID: stringPtr("test_001"),
+		FunctionCallID: ptr.Ptr("test_001"),
 	}
 	args := map[string]any{"test": "value"}
 
@@ -33,7 +34,7 @@ func TestStreamingToolProgressUpdates(t *testing.T) {
 
 	ctx := context.Background()
 	toolCtx := &core.ToolContext{
-		FunctionCallID: stringPtr("test_002"),
+		FunctionCallID: ptr.Ptr("test_002"),
 	}
 	args := map[string]any{"test": "value"}
 
@@ -88,7 +89,7 @@ func TestStreamingToolCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	toolCtx := &core.ToolContext{
-		FunctionCallID: stringPtr("test_003"),
+		FunctionCallID: ptr.Ptr("test_003"),
 	}
 	args := map[string]any{"test": "value"}
 
@@ -119,7 +120,7 @@ func TestFileProcessorTool(t *testing.T) {
 
 	ctx := context.Background()
 	toolCtx := &core.ToolContext{
-		FunctionCallID: stringPtr("file_test"),
+		FunctionCallID: ptr.Ptr("file_test"),
 	}
 	args := map[string]any{
 		"file_path": "/test/file.txt",
@@ -162,7 +163,7 @@ func TestWebScraperTool(t *testing.T) {
 
 	ctx := context.Background()
 	toolCtx := &core.ToolContext{
-		FunctionCallID: stringPtr("scraper_test"),
+		FunctionCallID: ptr.Ptr("scraper_test"),
 	}
 	args := map[string]any{
 		"url":       "https://example.com",
@@ -221,7 +222,7 @@ func TestConcurrencyLimits(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		toolCtx := &core.ToolContext{
-			FunctionCallID: stringPtr("concurrent_test"),
+			FunctionCallID: ptr.Ptr("concurrent_test"),
 		}
 		args := map[string]any{"test": i}
 
@@ -247,8 +248,4 @@ func TestConcurrencyLimits(t *testing.T) {
 			stream.Cancel()
 		}
 	}
-}
-
-func stringPtr(s string) *string {
-	return &s
 }

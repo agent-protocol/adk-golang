@@ -6,6 +6,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 func TestConvertA2ARequestToADKRunArgs(t *testing.T) {
@@ -18,7 +19,7 @@ func TestConvertA2ARequestToADKRunArgs(t *testing.T) {
 			Parts: []a2a.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello, agent!"),
+					Text: ptr.Ptr("Hello, agent!"),
 				},
 				{
 					Type: "data",
@@ -97,7 +98,7 @@ func TestConvertEventToA2AEvents(t *testing.T) {
 			Parts: []core.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello from agent"),
+					Text: ptr.Ptr("Hello from agent"),
 				},
 				{
 					Type: "function_call",
@@ -167,7 +168,7 @@ func TestConvertEventToA2AMessage(t *testing.T) {
 			Parts: []core.Part{
 				{
 					Type: "text",
-					Text: stringPtr("Hello from agent"),
+					Text: ptr.Ptr("Hello from agent"),
 				},
 				{
 					Type: "function_response",
@@ -236,7 +237,7 @@ func TestConvertEventToA2AMessage(t *testing.T) {
 func TestConvertA2APartToADKPart_TextPart(t *testing.T) {
 	a2aPart := a2a.Part{
 		Type: "text",
-		Text: stringPtr("Hello world"),
+		Text: ptr.Ptr("Hello world"),
 		Metadata: map[string]any{
 			"test": "value",
 		},

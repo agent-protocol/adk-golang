@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // LlmAgentConfig contains configuration options for LLM agents.
@@ -29,8 +30,8 @@ type LlmAgentConfig struct {
 func DefaultLlmAgentConfig() *LlmAgentConfig {
 	return &LlmAgentConfig{
 		Model:            "gemini-1.5-pro",
-		Temperature:      llmFloatPtr(0.7),
-		MaxTokens:        llmIntPtr(4096),
+		Temperature:      ptr.Float32(0.7),
+		MaxTokens:        ptr.Ptr(4096),
 		MaxToolCalls:     10,
 		ToolCallTimeout:  30 * time.Second,
 		RetryAttempts:    3,
@@ -180,7 +181,7 @@ func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.Inv
 		if err := a.executeConversationFlow(ctx, invocationCtx, eventChan); err != nil {
 			// Send error event
 			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			errorEvent.ErrorMessage = stringPtr(fmt.Sprintf("Conversation flow failed: %v", err))
+			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Conversation flow failed: %v", err))
 
 			select {
 			case eventChan <- errorEvent:
@@ -242,7 +243,7 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		functionCalls := event.GetFunctionCalls()
 		if len(functionCalls) == 0 {
 			// No tool calls - this is a final response
-			event.TurnComplete = llmBoolPtr(true)
+			event.TurnComplete = ptr.Ptr(true)
 
 			select {
 			case eventChan <- event:
@@ -381,7 +382,7 @@ func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *
 			// Create intermediate event for long-running tool
 			longRunningEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
 			longRunningEvent.LongRunningToolIDs = []string{funcCall.ID}
-			longRunningEvent.Partial = llmBoolPtr(true)
+			longRunningEvent.Partial = ptr.Ptr(true)
 
 			select {
 			case eventChan <- longRunningEvent:
@@ -574,7 +575,7 @@ func (a *StreamingLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.In
 		if err := a.executeStreamingConversationFlow(ctx, invocationCtx, eventChan); err != nil {
 			// Send error event
 			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			errorEvent.ErrorMessage = stringPtr(fmt.Sprintf("Streaming conversation flow failed: %v", err))
+			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Streaming conversation flow failed: %v", err))
 
 			select {
 			case eventChan <- errorEvent:
@@ -685,18 +686,4 @@ func (a *StreamingLlmAgent) executeStreamingConversationFlow(ctx context.Context
 	}
 
 	return nil
-}
-
-// Helper functions for LlmAgent
-
-func llmIntPtr(i int) *int {
-	return &i
-}
-
-func llmBoolPtr(b bool) *bool {
-	return &b
-}
-
-func llmFloatPtr(f float32) *float32 {
-	return &f
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 	"github.com/agent-protocol/adk-golang/pkg/sessions"
 )
 
@@ -157,14 +158,14 @@ func TestInvocationContext(t *testing.T) {
 	userContent := &core.Content{
 		Role: "user",
 		Parts: []core.Part{
-			{Type: "text", Text: stringPtr("Hello")},
+			{Type: "text", Text: ptr.Ptr("Hello")},
 		},
 	}
 
 	invocationCtx = invocationCtx.
 		WithUserContent(userContent).
 		WithBranch("test_branch").
-		WithRunConfig(&core.RunConfig{MaxTurns: intPtr(5)})
+		WithRunConfig(&core.RunConfig{MaxTurns: ptr.Ptr(5)})
 
 	if invocationCtx.UserContent != userContent {
 		t.Errorf("Expected user content to be set correctly")
@@ -341,10 +342,4 @@ func TestAgentCleanup(t *testing.T) {
 	if err != nil {
 		t.Errorf("Cleanup should not return error: %v", err)
 	}
-}
-
-// Helper functions for tests
-
-func intPtr(i int) *int {
-	return &i
 }

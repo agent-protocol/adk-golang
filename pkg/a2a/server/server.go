@@ -11,6 +11,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // A2AServer wraps local agents as A2A endpoints
@@ -334,7 +335,7 @@ func (s *A2AServer) executeAgent(task *TaskExecution, agent core.BaseAgent) {
 			Parts: []a2a.Part{
 				{
 					Type: "text",
-					Text: stringPtr(fmt.Sprintf("Agent execution failed: %v", err)),
+					Text: ptr.Ptr(fmt.Sprintf("Agent execution failed: %v", err)),
 				},
 			},
 		}
@@ -394,9 +395,4 @@ func (s *A2AServer) sendError(w http.ResponseWriter, id any, code int, message s
 // generateTaskID generates a unique task ID
 func generateTaskID() string {
 	return fmt.Sprintf("task_%d", time.Now().UnixNano())
-}
-
-// stringPtr returns a pointer to the given string
-func stringPtr(s string) *string {
-	return &s
 }

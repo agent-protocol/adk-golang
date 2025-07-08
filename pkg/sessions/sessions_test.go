@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 func TestInMemorySessionService(t *testing.T) {
@@ -88,7 +89,7 @@ func testSessionService(t *testing.T, service SessionService) {
 		Content: &core.Content{
 			Role: "assistant",
 			Parts: []core.Part{
-				{Type: "text", Text: stringPtr("Hello, world!")},
+				{Type: "text", Text: ptr.Ptr("Hello, world!")},
 			},
 		},
 		Actions:   core.EventActions{StateDelta: map[string]any{"key2": "value2"}},
@@ -584,9 +585,4 @@ func TestCleanupExpiredSessions(t *testing.T) {
 	if deletedSession != nil {
 		t.Error("Session should be nil after cleanup")
 	}
-}
-
-// Helper function for tests
-func stringPtr(s string) *string {
-	return &s
 }

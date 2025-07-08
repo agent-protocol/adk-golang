@@ -103,7 +103,7 @@ func main() {
 	
 	log.Printf("Starting agent %s", RootAgent.Name())
 	// TODO: Add your agent execution logic here
-}`, appName, model, appName)
+}`, appName, model, appName, model, appName)
 
 	if err := os.WriteFile(filepath.Join(agentPath, "agent.go"), []byte(agentContent), 0644); err != nil {
 		return fmt.Errorf("failed to create agent.go: %w", err)

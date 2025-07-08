@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 	"github.com/agent-protocol/adk-golang/pkg/sessions"
 )
 
@@ -109,7 +110,7 @@ func TestRunnerBasicExecution(t *testing.T) {
 			Content: &core.Content{
 				Role: "agent",
 				Parts: []core.Part{
-					{Type: "text", Text: stringPtr("Hello from agent")},
+					{Type: "text", Text: ptr.Ptr("Hello from agent")},
 				},
 			},
 			Timestamp: time.Now(),
@@ -121,7 +122,7 @@ func TestRunnerBasicExecution(t *testing.T) {
 			Content: &core.Content{
 				Role: "agent",
 				Parts: []core.Part{
-					{Type: "text", Text: stringPtr("Processing complete")},
+					{Type: "text", Text: ptr.Ptr("Processing complete")},
 				},
 			},
 			Timestamp: time.Now(),
@@ -148,7 +149,7 @@ func TestRunnerBasicExecution(t *testing.T) {
 		NewMessage: &core.Content{
 			Role: "user",
 			Parts: []core.Part{
-				{Type: "text", Text: stringPtr("Hello agent")},
+				{Type: "text", Text: ptr.Ptr("Hello agent")},
 			},
 		},
 	}
@@ -189,7 +190,7 @@ func TestRunnerSynchronousExecution(t *testing.T) {
 			Content: &core.Content{
 				Role: "agent",
 				Parts: []core.Part{
-					{Type: "text", Text: stringPtr("Sync response")},
+					{Type: "text", Text: ptr.Ptr("Sync response")},
 				},
 			},
 			Timestamp: time.Now(),
@@ -210,7 +211,7 @@ func TestRunnerSynchronousExecution(t *testing.T) {
 		NewMessage: &core.Content{
 			Role: "user",
 			Parts: []core.Part{
-				{Type: "text", Text: stringPtr("Sync request")},
+				{Type: "text", Text: ptr.Ptr("Sync request")},
 			},
 		},
 	}
@@ -279,7 +280,7 @@ func TestRunnerCallbacks(t *testing.T) {
 			Content: &core.Content{
 				Role: "agent",
 				Parts: []core.Part{
-					{Type: "text", Text: stringPtr("Callback test")},
+					{Type: "text", Text: ptr.Ptr("Callback test")},
 				},
 			},
 			Timestamp: time.Now(),
@@ -379,7 +380,7 @@ func TestRunnerConcurrentExecution(t *testing.T) {
 			Content: &core.Content{
 				Role: "agent",
 				Parts: []core.Part{
-					{Type: "text", Text: stringPtr("Concurrent response")},
+					{Type: "text", Text: ptr.Ptr("Concurrent response")},
 				},
 			},
 			Timestamp: time.Now(),

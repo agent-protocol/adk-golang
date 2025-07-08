@@ -6,6 +6,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // ConvertEventToA2AEvents converts an ADK event to a list of A2A events.
@@ -213,7 +214,7 @@ func convertEventToStatusUpdateEvent(
 		Message: message,
 	}
 	if adkEvent.Timestamp.IsZero() {
-		status.Timestamp = timePtr(time.Now())
+		status.Timestamp = ptr.Ptr(time.Now())
 	} else {
 		status.Timestamp = &adkEvent.Timestamp
 	}
@@ -244,7 +245,7 @@ func convertArtifactToA2AEvent(
 		Parts: []a2a.Part{
 			{
 				Type: "text",
-				Text: stringPtr(fmt.Sprintf("Artifact %s version %d", filename, version)),
+				Text: ptr.Ptr(fmt.Sprintf("Artifact %s version %d", filename, version)),
 			},
 		},
 		Metadata: map[string]any{
@@ -281,7 +282,7 @@ func createErrorStatusEvent(adkEvent *core.Event, taskID string, contextID strin
 	status := a2a.TaskStatus{
 		State:     a2a.TaskStateFailed,
 		Message:   message,
-		Timestamp: timePtr(time.Now()),
+		Timestamp: ptr.Ptr(time.Now()),
 	}
 
 	return &a2a.TaskStatusUpdateEvent{

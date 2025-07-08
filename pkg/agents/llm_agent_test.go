@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
 // MockLLMConnection is a mock implementation for testing.
@@ -28,7 +29,7 @@ func (m *MockLLMConnection) GenerateContent(ctx context.Context, request *core.L
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr("Default response"),
+						Text: ptr.Ptr("Default response"),
 					},
 				},
 			},
@@ -117,8 +118,8 @@ func TestEnhancedLlmAgent_BasicFunctionality(t *testing.T) {
 	// Create test configuration
 	config := &LlmAgentConfig{
 		Model:           "test-model",
-		Temperature:     llmFloatPtr(0.7),
-		MaxTokens:       llmIntPtr(1000),
+		Temperature:     ptr.Float32(0.7),
+		MaxTokens:       ptr.Ptr(int(1000)),
 		MaxToolCalls:    5,
 		ToolCallTimeout: 10 * time.Second,
 		RetryAttempts:   1,
@@ -189,7 +190,7 @@ func TestEnhancedLlmAgent_SimpleConversation(t *testing.T) {
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr("Hello! How can I help you today?"),
+						Text: ptr.Ptr("Hello! How can I help you today?"),
 					},
 				},
 			},
@@ -208,7 +209,7 @@ func TestEnhancedLlmAgent_SimpleConversation(t *testing.T) {
 		Parts: []core.Part{
 			{
 				Type: "text",
-				Text: stringPtr("Hello"),
+				Text: ptr.Ptr("Hello"),
 			},
 		},
 	}
@@ -269,7 +270,7 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr("I used the test tool and got: test result"),
+						Text: ptr.Ptr("I used the test tool and got: test result"),
 					},
 				},
 			},
@@ -292,7 +293,7 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 		Parts: []core.Part{
 			{
 				Type: "text",
-				Text: stringPtr("Use the test tool"),
+				Text: ptr.Ptr("Use the test tool"),
 			},
 		},
 	}
@@ -350,11 +351,11 @@ func TestStreamingLlmAgent(t *testing.T) {
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr("Hello"),
+						Text: ptr.Ptr("Hello"),
 					},
 				},
 			},
-			Partial: llmBoolPtr(true),
+			Partial: ptr.Ptr(true),
 		},
 		{
 			Content: &core.Content{
@@ -362,11 +363,11 @@ func TestStreamingLlmAgent(t *testing.T) {
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr(" there!"),
+						Text: ptr.Ptr(" there!"),
 					},
 				},
 			},
-			Partial: llmBoolPtr(false),
+			Partial: ptr.Ptr(false),
 		},
 	}
 
@@ -384,7 +385,7 @@ func TestStreamingLlmAgent(t *testing.T) {
 		Parts: []core.Part{
 			{
 				Type: "text",
-				Text: stringPtr("Hello"),
+				Text: ptr.Ptr("Hello"),
 			},
 		},
 	}
@@ -437,8 +438,8 @@ func TestLlmAgentConfig(t *testing.T) {
 	// Test custom config
 	customConfig := &LlmAgentConfig{
 		Model:            "custom-model",
-		Temperature:      llmFloatPtr(0.5),
-		MaxTokens:        llmIntPtr(2000),
+		Temperature:      ptr.Float32(0.5),
+		MaxTokens:        ptr.Ptr(2000),
 		MaxToolCalls:     15,
 		ToolCallTimeout:  45 * time.Second,
 		RetryAttempts:    5,
@@ -506,7 +507,7 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 				Parts: []core.Part{
 					{
 						Type: "text",
-						Text: stringPtr("Tool execution completed"),
+						Text: ptr.Ptr("Tool execution completed"),
 					},
 				},
 			},
@@ -526,7 +527,7 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 		Parts: []core.Part{
 			{
 				Type: "text",
-				Text: stringPtr("Use the tool"),
+				Text: ptr.Ptr("Use the tool"),
 			},
 		},
 	}
