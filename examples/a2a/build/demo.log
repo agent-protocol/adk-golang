@@ -1,0 +1,42 @@
+🌟 Complete A2A Demo: Client & Server
+=====================================
+🚀 Starting A2A Server on :8080...
+✅ A2A Server is ready on http://localhost:8080
+
+🤖 Starting Client Demonstrations
+=================================
+✅ Discovered agent: multi v1.0.0
+
+📋 Demo 1/8: Basic Calculator
+----------------------------------------
+✅ Calculation request sent (Task: demo_task_1751958455975666000)
+❌ Task failed
+💥 Error: Agent execution failed: LLM connection not configured for agent calculator
+
+📋 Demo 2/8: Weather Query
+----------------------------------------
+✅ Weather request sent (Task: demo_task_1751958457479074000)
+❌ Task failed
+💥 Error: Agent execution failed: LLM connection not configured for agent weather
+
+📋 Demo 3/8: Echo Test
+----------------------------------------
+✅ Echo request sent (Task: demo_task_1751958458981957000)
+✅ Task completed successfully
+
+📋 Demo 4/8: Multi-step Task
+----------------------------------------
+✅ Multi-step request sent (Task: demo_task_1751958460484320000)
+❌ Task failed
+💥 Error: Agent execution failed: LLM connection not configured for agent multi
+
+📋 Demo 5/8: Streaming Response
+----------------------------------------
+🌊 Starting streaming request...
+❌ Streaming failed: expected text/event-stream, got application/json
+
+📋 Demo 6/8: Task Lifecycle
+----------------------------------------
+📋 Creating task: demo_task_1751958462990105000
+✅ Task created with status: working
+🔍 Queried task status: completed
