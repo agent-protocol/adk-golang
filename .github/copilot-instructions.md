@@ -15,7 +15,7 @@ And we're working to implement an Golang API.
 - A2A Integration: A2aAgentExecutor
 
 # Key Design Considerations for Go
-- Concurrency: Use goroutines and channels instead of Python's asyncio
+- Concurrency: Use goroutines and channels instead of Python's asyncio. Aware of race conditions and deadlocks.
 - Error Handling: Explicit error returns instead of exceptions
 - Context: Use context.Context for cancellation and timeouts
 - Interfaces: Define small, focused interfaces following Go idioms. Using interface or generic where appropriates.
@@ -45,6 +45,7 @@ And we're working to implement an Golang API.
 adk-golang/
 ├── cmd/
 │   └── adk/              # CLI application
+├── docs/                 # Documentation files, all development notes
 ├── pkg/
 │   ├── agents/           # Agent implementations
 │   ├── tools/            # Tool system
