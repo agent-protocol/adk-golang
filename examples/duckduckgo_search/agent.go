@@ -9,7 +9,6 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/agents"
 	"github.com/agent-protocol/adk-golang/pkg/core"
-	"github.com/agent-protocol/adk-golang/pkg/llm"
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 	"github.com/agent-protocol/adk-golang/pkg/tools"
 )
@@ -28,7 +27,7 @@ func init() {
 	}
 
 	// Create Ollama configuration
-	ollamaConfig := &llm.OllamaConfig{
+	ollamaConfig := &ollama.OllamaConfig{
 		BaseURL:     "http://localhost:11434",
 		Model:       modelName,
 		Temperature: ptr.Float32(0.7),
@@ -42,7 +41,7 @@ func init() {
 	}
 
 	// Create Ollama connection
-	ollamaConnection := llm.NewOllamaConnection(ollamaConfig)
+	ollamaConnection := ollama.NewOllamaConnection(ollamaConfig)
 
 	// Create agent configuration for Ollama
 	agentConfig := &agents.LlmAgentConfig{

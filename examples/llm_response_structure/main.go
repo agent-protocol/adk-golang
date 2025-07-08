@@ -9,7 +9,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/agents"
 	"github.com/agent-protocol/adk-golang/pkg/core"
-	"github.com/agent-protocol/adk-golang/pkg/llm"
+	"github.com/agent-protocol/adk-golang/pkg/llmconnect/ollama"
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 	"github.com/agent-protocol/adk-golang/pkg/tools"
 )
@@ -79,14 +79,14 @@ func demonstrateEnhancedAgent(ctx context.Context) error {
 	agent.AddTool(weatherTool)
 
 	// Set up LLM connection with enhanced prompting
-	ollamaConfig := &llm.OllamaConfig{
+	ollamaConfig := &ollama.OllamaConfig{
 		BaseURL:     "http://localhost:11434",
 		Model:       "llama3.2",
 		Temperature: ptr.Float32(0.7),
 		Timeout:     30 * time.Second,
 	}
 
-	llmConn := llm.NewOllamaConnection(ollamaConfig)
+	llmConn := ollama.NewOllamaConnection(ollamaConfig)
 	agent.SetLLMConnection(llmConn)
 
 	// Create session and context
@@ -169,13 +169,13 @@ func demonstrateAdaptiveAgent(ctx context.Context) error {
 	adaptiveAgent.SetRetryStrategy(retryStrategy)
 
 	// Set up LLM connection
-	ollamaConfig := &llm.OllamaConfig{
+	ollamaConfig := &ollama.OllamaConfig{
 		BaseURL: "http://localhost:11434",
 		Model:   "llama3.2",
 		Timeout: 30 * time.Second,
 	}
 
-	llmConn := llm.NewOllamaConnection(ollamaConfig)
+	llmConn := ollama.NewOllamaConnection(ollamaConfig)
 	adaptiveAgent.SetLLMConnection(llmConn)
 
 	// Check model capabilities
