@@ -26,3 +26,4 @@ go.work.sum
 .env
 .DS_Store
 notes.md
+bin/
