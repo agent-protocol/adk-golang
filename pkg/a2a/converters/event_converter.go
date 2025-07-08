@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // ConvertEventToA2AEvents converts an ADK event to a list of A2A events.

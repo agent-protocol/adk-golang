@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 	"github.com/agent-protocol/adk-golang/pkg/sessions"
 )
 

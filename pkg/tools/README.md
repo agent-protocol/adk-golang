@@ -423,7 +423,7 @@ pkg/tools/
 ├── function_tool_test.go         # Comprehensive test suite
 └── base.go                       # Base tool implementations
 
-internal/core/
+pkg/core/
 └── context.go                    # Enhanced ToolContext with new methods
 
 examples/enhanced_function_tool_demo/

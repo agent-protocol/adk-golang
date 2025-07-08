@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // A2AServer wraps local agents as A2A endpoints

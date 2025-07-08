@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // AgentCardResolutionError is raised when agent card resolution fails

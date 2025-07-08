@@ -6,20 +6,20 @@ Successfully created a comprehensive Go implementation of the Agent Development 
 
 ## Core Components Implemented
 
-### 1. Core Types (`internal/core/types.go`)
+### 1. Core Types (`pkg/core/types.go`)
 - **Event**: Main communication unit with JSON marshaling
 - **Content & Parts**: Message structure with text, function calls, responses
 - **State**: Session state management with delta updates
 - **FunctionDeclaration**: Tool schema definitions
 - **LLMRequest/Response**: LLM integration types
 
-### 2. Interfaces (`internal/core/interfaces.go`)
+### 2. Interfaces (`pkg/core/interfaces.go`)
 - **BaseAgent**: Core agent interface with async execution
 - **BaseTool**: Tool interface with context-aware execution
 - **Service Interfaces**: Session, Artifact, Memory, Credential services
 - **EventStream**: Channel-based event streaming
 
-### 3. Context Types (`internal/core/context.go`)
+### 3. Context Types (`pkg/core/context.go`)
 - **Session**: Conversation session management
 - **InvocationContext**: Agent execution context
 - **ToolContext**: Tool execution context
@@ -119,7 +119,7 @@ session, _ := sessionService.CreateSession(ctx, &core.CreateSessionRequest{
 
 ## Testing & Validation
 
-### Unit Tests (`internal/core/interfaces_test.go`)
+### Unit Tests (`pkg/core/interfaces_test.go`)
 - ✅ Interface compliance testing
 - ✅ Event structure validation
 - ✅ State management testing
@@ -144,7 +144,7 @@ import (
     "github.com/agent-protocol/adk-golang/pkg/runners"
     "github.com/agent-protocol/adk-golang/pkg/sessions"
     "github.com/agent-protocol/adk-golang/pkg/tools"
-    "github.com/agent-protocol/adk-golang/internal/core"
+    "github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 func main() {

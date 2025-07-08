@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // SessionServiceFactory creates session service instances based on configuration.

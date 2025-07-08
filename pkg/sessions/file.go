@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // FileSessionService implements SessionService using file-based storage.

@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // FileProcessorTool demonstrates a long-running file processing tool.

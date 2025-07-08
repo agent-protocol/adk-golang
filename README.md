@@ -146,7 +146,7 @@ import (
     "github.com/agent-protocol/adk-golang/pkg/runners"
     "github.com/agent-protocol/adk-golang/pkg/sessions"
     "github.com/agent-protocol/adk-golang/pkg/tools"
-    "github.com/agent-protocol/adk-golang/internal/core"
+    "github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // LoggingEventHandler logs session lifecycle events.

@@ -262,7 +262,7 @@ import (
     "context"
     "log"
     
-    "github.com/agent-protocol/adk-golang/internal/core"
+    "github.com/agent-protocol/adk-golang/pkg/core"
     "github.com/agent-protocol/adk-golang/pkg/agents"
 )
 
@@ -383,4 +383,4 @@ When contributing to the CLI:
 - [Python ADK CLI Documentation](https://python-adk-docs.com/cli/)
 - [urfave/cli Documentation](https://cli.urfave.org/)
 - [A2A Protocol Specification](https://a2a-protocol.com/)
-- [ADK Core Types](../internal/core/README.md)
+- [ADK Core Types](../pkg/core/README.md)

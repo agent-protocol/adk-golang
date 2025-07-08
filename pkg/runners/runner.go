@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // RunnerImpl implements the Runner interface.

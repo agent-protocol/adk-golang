@@ -3,8 +3,8 @@ package converters
 import (
 	"fmt"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
 	"github.com/agent-protocol/adk-golang/pkg/a2a"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // ADKRunArgs represents the arguments needed to run an ADK agent.

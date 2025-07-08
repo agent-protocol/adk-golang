@@ -4,7 +4,7 @@ This directory contains a comprehensive session management system for the ADK Go
 
 ## Core Components
 
-### 1. Session Structure (`internal/core/context.go`)
+### 1. Session Structure (`pkg/core/context.go`)
 
 The `Session` struct provides the foundation for session management:
 
@@ -55,7 +55,7 @@ The `DefaultStateManager` provides:
 - **Type-safe** state operations with validation
 - **Context-aware** operations for better error handling
 
-### 5. Session Utilities (`internal/core/session_utils.go`)
+### 5. Session Utilities (`pkg/core/session_utils.go`)
 
 The `SessionStateHelper` provides convenient methods for:
 
@@ -227,7 +227,7 @@ The system includes comprehensive tests covering:
 Run tests with:
 ```bash
 go test ./pkg/sessions/... -v
-go test ./internal/core/... -v
+go test ./pkg/core/... -v
 ```
 
 ## Examples

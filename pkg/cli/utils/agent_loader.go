@@ -7,7 +7,7 @@ import (
 	"plugin"
 	"strings"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // AgentLoader handles loading agents from the filesystem

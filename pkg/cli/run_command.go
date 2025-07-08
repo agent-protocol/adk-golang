@@ -10,8 +10,8 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
 	"github.com/agent-protocol/adk-golang/pkg/cli/utils"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 	"github.com/agent-protocol/adk-golang/pkg/runners"
 	"github.com/agent-protocol/adk-golang/pkg/sessions"
 )

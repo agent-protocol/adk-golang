@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // BaseAgentImpl provides a basic implementation of the BaseAgent interface.

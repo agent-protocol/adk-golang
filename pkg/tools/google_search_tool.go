@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agent-protocol/adk-golang/internal/core"
+	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
 // GoogleSearchTool is a built-in tool that automatically invokes Google Search through Gemini models.

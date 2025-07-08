@@ -141,7 +141,7 @@ Created multi-agent workflow with:
 - ✅ Maintains consistency with other tools
 
 ### Dependencies
-- Uses existing `internal/core` types and interfaces
+- Uses existing `pkg/core` types and interfaces
 - Leverages established agent framework
 - No additional external dependencies required
 
