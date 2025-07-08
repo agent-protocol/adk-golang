@@ -201,6 +201,44 @@ func (c *OllamaConnection) Close(ctx context.Context) error {
 	return nil
 }
 
+// buildEnhancedToolInstructions creates clear instructions for tool usage.
+func (c *OllamaConnection) buildEnhancedToolInstructions(tools []*core.FunctionDeclaration) string {
+	var sb strings.Builder
+
+	sb.WriteString("## Tool Usage Instructions\n\n")
+	sb.WriteString("You have access to the following tools. Use them when they can help answer the user's question:\n\n")
+
+	for _, tool := range tools {
+		sb.WriteString(fmt.Sprintf("**%s**: %s\n", tool.Name, tool.Description))
+		if tool.Parameters != nil {
+			if props, hasProps := tool.Parameters["properties"].(map[string]interface{}); hasProps {
+				sb.WriteString("Parameters:\n")
+				for paramName, paramDef := range props {
+					if paramMap, ok := paramDef.(map[string]interface{}); ok {
+						if desc, hasDesc := paramMap["description"].(string); hasDesc {
+							sb.WriteString(fmt.Sprintf("- %s: %s\n", paramName, desc))
+						}
+					}
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("## Response Guidelines\n\n")
+	sb.WriteString("1. **Analyze First**: Determine if any tool can help answer the user's request\n")
+	sb.WriteString("2. **Use Tools When Relevant**: If a tool is available and can provide the needed information, use it\n")
+	sb.WriteString("3. **Tool Call Format**: When calling a tool, respond with a JSON object in this exact format:\n")
+	sb.WriteString("   ```json\n")
+	sb.WriteString("   {\"name\": \"tool_name\", \"parameters\": {\"param1\": \"value1\", \"param2\": \"value2\"}}\n")
+	sb.WriteString("   ```\n")
+	sb.WriteString("4. **Direct Answers**: If no tool is needed, provide a direct, helpful answer\n")
+	sb.WriteString("5. **No Repeated Calls**: Don't call the same tool multiple times with identical parameters\n\n")
+	sb.WriteString("Remember: Your goal is to be helpful. Use tools when they add value, provide direct answers when they don't.\n")
+
+	return sb.String()
+}
+
 // convertToOllamaRequest converts an ADK LLMRequest to Ollama format.
 func (c *OllamaConnection) convertToOllamaRequest(request *core.LLMRequest, stream bool) (*OllamaChatRequest, error) {
 	ollamaReq := &OllamaChatRequest{
@@ -232,6 +270,43 @@ func (c *OllamaConnection) convertToOllamaRequest(request *core.LLMRequest, stre
 	// Apply default config values if not overridden
 	if c.config.Temperature != nil && ollamaReq.Options["temperature"] == nil {
 		ollamaReq.Options["temperature"] = *c.config.Temperature
+	}
+
+	// Enhanced tool calling instruction for Ollama models
+	if len(request.Tools) > 0 {
+		// Add enhanced system message for better tool understanding
+		toolInstructions := c.buildEnhancedToolInstructions(request.Tools)
+
+		// Check if there's already a system message
+		hasSystemMessage := false
+		for i, content := range request.Contents {
+			if content.Role == "system" {
+				// Enhance existing system message
+				for j, part := range content.Parts {
+					if part.Type == "text" && part.Text != nil {
+						enhanced := *part.Text + "\n\n" + toolInstructions
+						request.Contents[i].Parts[j].Text = &enhanced
+					}
+				}
+				hasSystemMessage = true
+				break
+			}
+		}
+
+		// Add system message if none exists
+		if !hasSystemMessage {
+			systemContent := core.Content{
+				Role: "system",
+				Parts: []core.Part{
+					{
+						Type: "text",
+						Text: &toolInstructions,
+					},
+				},
+			}
+			// Insert at the beginning
+			request.Contents = append([]core.Content{systemContent}, request.Contents...)
+		}
 	}
 
 	// Convert contents to messages
