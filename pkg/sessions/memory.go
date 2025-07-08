@@ -192,6 +192,160 @@ func (s *InMemorySessionService) ListSessions(ctx context.Context, req *core.Lis
 	}, nil
 }
 
+// GetSessionsByUser returns all sessions for a specific user.
+func (s *InMemorySessionService) GetSessionsByUser(ctx context.Context, appName, userID string) ([]*core.Session, error) {
+	req := &core.ListSessionsRequest{
+		AppName: appName,
+		UserID:  userID,
+	}
+
+	response, err := s.ListSessions(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Sessions, nil
+}
+
+// UpdateSessionState updates the state of an existing session.
+func (s *InMemorySessionService) UpdateSessionState(ctx context.Context, appName, userID, sessionID string, state map[string]any) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	key := s.sessionKey(appName, userID, sessionID)
+	session, exists := s.sessions[key]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	session.State = copyMap(state)
+	session.LastUpdateTime = time.Now()
+	return nil
+}
+
+// GetSessionState retrieves only the state of a session.
+func (s *InMemorySessionService) GetSessionState(ctx context.Context, appName, userID, sessionID string) (map[string]any, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	key := s.sessionKey(appName, userID, sessionID)
+	session, exists := s.sessions[key]
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return copyMap(session.State), nil
+}
+
+// ClearSessionEvents removes all events from a session while keeping the session and state.
+func (s *InMemorySessionService) ClearSessionEvents(ctx context.Context, appName, userID, sessionID string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	key := s.sessionKey(appName, userID, sessionID)
+	session, exists := s.sessions[key]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	session.Events = make([]*core.Event, 0)
+	session.LastUpdateTime = time.Now()
+	return nil
+}
+
+// GetSessionsModifiedAfter returns sessions modified after the specified time.
+func (s *InMemorySessionService) GetSessionsModifiedAfter(ctx context.Context, appName, userID string, after time.Time) ([]*core.Session, error) {
+	sessions, err := s.GetSessionsByUser(ctx, appName, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*core.Session
+	for _, session := range sessions {
+		if session.LastUpdateTime.After(after) {
+			result = append(result, session)
+		}
+	}
+
+	return result, nil
+}
+
+// CleanupExpiredSessions removes sessions that haven't been updated within the specified duration.
+func (s *InMemorySessionService) CleanupExpiredSessions(ctx context.Context, maxAge time.Duration) (int, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	cutoff := time.Now().Add(-maxAge)
+	deleted := 0
+
+	for key, session := range s.sessions {
+		if session.LastUpdateTime.Before(cutoff) {
+			delete(s.sessions, key)
+			deleted++
+		}
+	}
+
+	return deleted, nil
+}
+
+// GetSessionMetadata returns lightweight metadata about a session without loading full content.
+func (s *InMemorySessionService) GetSessionMetadata(ctx context.Context, appName, userID, sessionID string) (*SessionMetadata, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	key := s.sessionKey(appName, userID, sessionID)
+	session, exists := s.sessions[key]
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	stateKeys := make([]string, 0, len(session.State))
+	for key := range session.State {
+		stateKeys = append(stateKeys, key)
+	}
+
+	hasErrors := false
+	for _, event := range session.Events {
+		if event.ErrorMessage != nil {
+			hasErrors = true
+			break
+		}
+	}
+
+	return &SessionMetadata{
+		ID:             session.ID,
+		AppName:        session.AppName,
+		UserID:         session.UserID,
+		EventCount:     len(session.Events),
+		LastUpdateTime: session.LastUpdateTime,
+		StateKeys:      stateKeys,
+		HasErrors:      hasErrors,
+	}, nil
+}
+
+// BulkDeleteSessions deletes multiple sessions efficiently.
+func (s *InMemorySessionService) BulkDeleteSessions(ctx context.Context, appName, userID string, sessionIDs []string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, sessionID := range sessionIDs {
+		key := s.sessionKey(appName, userID, sessionID)
+		delete(s.sessions, key)
+	}
+
+	return nil
+}
+
+// Close performs cleanup operations and closes resources.
+func (s *InMemorySessionService) Close(ctx context.Context) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Clear all sessions
+	s.sessions = make(map[string]*core.Session)
+	return nil
+}
+
 // sessionKey creates a unique key for session storage.
 func (s *InMemorySessionService) sessionKey(appName, userID, sessionID string) string {
 	return fmt.Sprintf("%s:%s:%s", appName, userID, sessionID)
@@ -199,7 +353,7 @@ func (s *InMemorySessionService) sessionKey(appName, userID, sessionID string) s
 
 // generateSessionID creates a unique session identifier.
 func generateSessionID() string {
-	return fmt.Sprintf("session_%d", time.Now().UnixNano())
+	return fmt.Sprintf("session_%d_%d", time.Now().UnixNano(), time.Now().Unix()%1000)
 }
 
 // copyMap creates a deep copy of a map.

@@ -1,0 +1,16 @@
+{
+  "id": "session_1751948983609984000_983",
+  "app_name": "file_demo",
+  "user_id": "user456",
+  "state": {
+    "last_activity": "2025-07-08T11:29:43.610528+07:00",
+    "preferences": {
+      "language": "en",
+      "notifications": true,
+      "theme": "light"
+    },
+    "session_type": "demo"
+  },
+  "events": [],
+  "last_update_time": "2025-07-08T11:29:43.61055+07:00"
+}

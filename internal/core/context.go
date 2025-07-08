@@ -2,6 +2,7 @@
 package core
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -13,6 +14,266 @@ type Session struct {
 	State          map[string]any `json:"state"`
 	Events         []*Event       `json:"events"`
 	LastUpdateTime time.Time      `json:"last_update_time"`
+}
+
+// NewSession creates a new session with the given parameters.
+func NewSession(id, appName, userID string) *Session {
+	return &Session{
+		ID:             id,
+		AppName:        appName,
+		UserID:         userID,
+		State:          make(map[string]any),
+		Events:         make([]*Event, 0),
+		LastUpdateTime: time.Now(),
+	}
+}
+
+// SetState sets a value in the session state.
+func (s *Session) SetState(key string, value any) {
+	if s.State == nil {
+		s.State = make(map[string]any)
+	}
+	s.State[key] = value
+	s.LastUpdateTime = time.Now()
+}
+
+// GetState retrieves a value from the session state.
+func (s *Session) GetState(key string) (any, bool) {
+	if s.State == nil {
+		return nil, false
+	}
+	value, exists := s.State[key]
+	return value, exists
+}
+
+// GetStateWithDefault retrieves a value from the session state with a default fallback.
+func (s *Session) GetStateWithDefault(key string, defaultValue any) any {
+	if value, exists := s.GetState(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+// DeleteState removes a key from the session state.
+func (s *Session) DeleteState(key string) {
+	if s.State != nil {
+		delete(s.State, key)
+		s.LastUpdateTime = time.Now()
+	}
+}
+
+// HasState checks if a key exists in the session state.
+func (s *Session) HasState(key string) bool {
+	_, exists := s.GetState(key)
+	return exists
+}
+
+// ClearState removes all state keys.
+func (s *Session) ClearState() {
+	s.State = make(map[string]any)
+	s.LastUpdateTime = time.Now()
+}
+
+// UpdateState merges the provided state delta into the current state.
+func (s *Session) UpdateState(delta map[string]any) {
+	if s.State == nil {
+		s.State = make(map[string]any)
+	}
+	for k, v := range delta {
+		s.State[k] = v
+	}
+	s.LastUpdateTime = time.Now()
+}
+
+// GetStateKeys returns all state keys.
+func (s *Session) GetStateKeys() []string {
+	if s.State == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(s.State))
+	for k := range s.State {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// GetStateSize returns the number of state keys.
+func (s *Session) GetStateSize() int {
+	if s.State == nil {
+		return 0
+	}
+	return len(s.State)
+}
+
+// CopyState returns a copy of the current state.
+func (s *Session) CopyState() map[string]any {
+	if s.State == nil {
+		return make(map[string]any)
+	}
+	copied := make(map[string]any, len(s.State))
+	for k, v := range s.State {
+		copied[k] = v
+	}
+	return copied
+}
+
+// AddEvent appends an event to the session.
+func (s *Session) AddEvent(event *Event) {
+	if s.Events == nil {
+		s.Events = make([]*Event, 0)
+	}
+	s.Events = append(s.Events, event)
+	s.LastUpdateTime = time.Now()
+
+	// Apply state delta from event actions
+	if len(event.Actions.StateDelta) > 0 {
+		s.UpdateState(event.Actions.StateDelta)
+	}
+}
+
+// GetLastEvent returns the most recent event, or nil if no events exist.
+func (s *Session) GetLastEvent() *Event {
+	if len(s.Events) == 0 {
+		return nil
+	}
+	return s.Events[len(s.Events)-1]
+}
+
+// GetEventCount returns the number of events in the session.
+func (s *Session) GetEventCount() int {
+	return len(s.Events)
+}
+
+// GetEventsByAuthor returns all events by a specific author.
+func (s *Session) GetEventsByAuthor(author string) []*Event {
+	var events []*Event
+	for _, event := range s.Events {
+		if event.Author == author {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+// GetEventsAfter returns all events after the specified time.
+func (s *Session) GetEventsAfter(after time.Time) []*Event {
+	var events []*Event
+	for _, event := range s.Events {
+		if event.Timestamp.After(after) {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+// GetEventsByInvocation returns all events for a specific invocation.
+func (s *Session) GetEventsByInvocation(invocationID string) []*Event {
+	var events []*Event
+	for _, event := range s.Events {
+		if event.InvocationID == invocationID {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+// ClearEvents removes all events from the session.
+func (s *Session) ClearEvents() {
+	s.Events = make([]*Event, 0)
+	s.LastUpdateTime = time.Now()
+}
+
+// TrimEvents keeps only the last N events.
+func (s *Session) TrimEvents(maxEvents int) {
+	if len(s.Events) > maxEvents {
+		s.Events = s.Events[len(s.Events)-maxEvents:]
+		s.LastUpdateTime = time.Now()
+	}
+}
+
+// HasErrors checks if any events in the session contain errors.
+func (s *Session) HasErrors() bool {
+	for _, event := range s.Events {
+		if event.ErrorMessage != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// GetErrorEvents returns all events that contain errors.
+func (s *Session) GetErrorEvents() []*Event {
+	var errorEvents []*Event
+	for _, event := range s.Events {
+		if event.ErrorMessage != nil {
+			errorEvents = append(errorEvents, event)
+		}
+	}
+	return errorEvents
+}
+
+// GetFunctionCalls returns all function calls across all events.
+func (s *Session) GetFunctionCalls() []*FunctionCall {
+	var calls []*FunctionCall
+	for _, event := range s.Events {
+		calls = append(calls, event.GetFunctionCalls()...)
+	}
+	return calls
+}
+
+// GetFunctionResponses returns all function responses across all events.
+func (s *Session) GetFunctionResponses() []*FunctionResponse {
+	var responses []*FunctionResponse
+	for _, event := range s.Events {
+		responses = append(responses, event.GetFunctionResponses()...)
+	}
+	return responses
+}
+
+// Clone creates a deep copy of the session.
+func (s *Session) Clone() *Session {
+	clone := &Session{
+		ID:             s.ID,
+		AppName:        s.AppName,
+		UserID:         s.UserID,
+		State:          s.CopyState(),
+		Events:         make([]*Event, len(s.Events)),
+		LastUpdateTime: s.LastUpdateTime,
+	}
+
+	// Deep copy events
+	copy(clone.Events, s.Events)
+
+	return clone
+}
+
+// IsEmpty checks if the session has no state and no events.
+func (s *Session) IsEmpty() bool {
+	return len(s.State) == 0 && len(s.Events) == 0
+}
+
+// GetAge returns the duration since the session was last updated.
+func (s *Session) GetAge() time.Duration {
+	return time.Since(s.LastUpdateTime)
+}
+
+// Touch updates the LastUpdateTime to the current time.
+func (s *Session) Touch() {
+	s.LastUpdateTime = time.Now()
+}
+
+// Validate performs basic validation on the session.
+func (s *Session) Validate() error {
+	if s.ID == "" {
+		return fmt.Errorf("session ID cannot be empty")
+	}
+	if s.AppName == "" {
+		return fmt.Errorf("app name cannot be empty")
+	}
+	if s.UserID == "" {
+		return fmt.Errorf("user ID cannot be empty")
+	}
+	return nil
 }
 
 // InvocationContext represents the context for a single agent invocation.

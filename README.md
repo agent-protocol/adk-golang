@@ -247,7 +247,7 @@ for event := range eventStream {
 ✅ **Event-driven Architecture**: Streaming events with Go channels  
 ✅ **Multi-agent Systems**: Hierarchical agent composition  
 ✅ **Tool Integration**: Function tools with automatic schema generation  
-✅ **Session Management**: Persistent conversation state  
+✅ **Session Management**: Comprehensive session persistence and state management  
 ✅ **Context Propagation**: Proper `context.Context` usage throughout  
 ✅ **Error Handling**: Go-native error handling patterns  
 ✅ **Concurrency**: Goroutine-based async execution  
@@ -260,10 +260,20 @@ cd examples/basic
 go run main.go
 ```
 
+You can also run the session management example:
+
+```bash
+cd examples/sessions  
+go run main.go
+```
+
 This will demonstrate:
 - Creating agents and tools
-- Session management
+- Session management with multiple backends
+- State management with scoped keys
 - Event streaming
+- Event handlers and lifecycle management
+- Session utilities and backup/restore
 - Agent hierarchy
 - Tool execution
 
@@ -275,12 +285,15 @@ This Go implementation provides the core interfaces and basic implementations to
 - ✅ Basic agent types (BaseAgent, LLMAgent, SequentialAgent)
 - ✅ Tool system (FunctionTool, AgentTool)
 - ✅ Event system with streaming support
-- ✅ Session management (in-memory implementation)
+- ✅ Comprehensive session management (memory and file persistence)
+- ✅ State management with scoped keys (app, user, session, temp)
+- ✅ Session event handlers (logging, metrics, validation)
+- ✅ Session utilities (backup/restore, filtering, merging)
 - ✅ Runner orchestration
 - ⏳ LLM integrations (interface defined, implementations needed)
 - ⏳ A2A protocol integration
 - ⏳ Advanced toolsets (MCP, OpenAPI, etc.)
-- ⏳ Persistent storage options
+- ⏳ Database persistence options
 - ⏳ CLI application
 
 ## Contributing
