@@ -40,7 +40,7 @@ And we're working to implement an Golang API.
 - Use interfaces for extensibility
 - Always try to use context.Context for cancellation and timeouts
 - Try to test versus adk-python where possible
-- Make sure the code is compatible and can be integrates with existing codebase
+- Make sure the code is compatible and can be integrated with existing codebase
 - Review all old examples and tests to ensure they are up-to-date
 - Run `go install ./...` and `go test ./...` to build and test the project after making changes
 
