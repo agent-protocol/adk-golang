@@ -2,6 +2,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -422,6 +423,141 @@ type ToolContext struct {
 	State             *State
 	Actions           *EventActions
 	FunctionCallID    *string
+}
+
+// SaveArtifact saves an artifact and returns its version.
+func (tc *ToolContext) SaveArtifact(ctx context.Context, filename string, content []byte, mimeType string) (int, error) {
+	if tc.InvocationContext.ArtifactService == nil {
+		return 0, fmt.Errorf("artifact service not available")
+	}
+
+	req := &SaveArtifactRequest{
+		AppName:   tc.InvocationContext.Session.AppName,
+		UserID:    tc.InvocationContext.Session.UserID,
+		SessionID: tc.InvocationContext.Session.ID,
+		Filename:  filename,
+		Content:   content,
+		MimeType:  mimeType,
+	}
+
+	return tc.InvocationContext.ArtifactService.SaveArtifact(ctx, req)
+}
+
+// LoadArtifact loads an artifact by filename and optional version.
+func (tc *ToolContext) LoadArtifact(ctx context.Context, filename string, version *int) ([]byte, error) {
+	if tc.InvocationContext.ArtifactService == nil {
+		return nil, fmt.Errorf("artifact service not available")
+	}
+
+	req := &LoadArtifactRequest{
+		AppName:   tc.InvocationContext.Session.AppName,
+		UserID:    tc.InvocationContext.Session.UserID,
+		SessionID: tc.InvocationContext.Session.ID,
+		Filename:  filename,
+		Version:   version,
+	}
+
+	return tc.InvocationContext.ArtifactService.LoadArtifact(ctx, req)
+}
+
+// ListArtifacts returns all artifact filenames for the current session.
+func (tc *ToolContext) ListArtifacts(ctx context.Context) ([]string, error) {
+	if tc.InvocationContext.ArtifactService == nil {
+		return nil, fmt.Errorf("artifact service not available")
+	}
+
+	req := &ListArtifactKeysRequest{
+		AppName:   tc.InvocationContext.Session.AppName,
+		UserID:    tc.InvocationContext.Session.UserID,
+		SessionID: tc.InvocationContext.Session.ID,
+	}
+
+	return tc.InvocationContext.ArtifactService.ListArtifactKeys(ctx, req)
+}
+
+// SearchMemory searches for relevant events based on a query.
+func (tc *ToolContext) SearchMemory(ctx context.Context, query string, limit int) ([]*Event, error) {
+	if tc.InvocationContext.MemoryService == nil {
+		return nil, fmt.Errorf("memory service not available")
+	}
+
+	req := &RetrieveMemoryRequest{
+		AppName: tc.InvocationContext.Session.AppName,
+		UserID:  tc.InvocationContext.Session.UserID,
+		Query:   query,
+		Limit:   limit,
+	}
+
+	return tc.InvocationContext.MemoryService.RetrieveRelevantEvents(ctx, req)
+}
+
+// RequestCredential requests authentication credentials for the given scheme.
+func (tc *ToolContext) RequestCredential(credentialID string, authConfig AuthConfig) error {
+	if tc.Actions.RequestedAuthConfigs == nil {
+		tc.Actions.RequestedAuthConfigs = make(map[string]AuthConfig)
+	}
+	tc.Actions.RequestedAuthConfigs[credentialID] = authConfig
+	return nil
+}
+
+// GetCredential retrieves a credential by ID.
+func (tc *ToolContext) GetCredential(ctx context.Context, credentialID string) (*Credential, error) {
+	if tc.InvocationContext.CredentialService == nil {
+		return nil, fmt.Errorf("credential service not available")
+	}
+
+	return tc.InvocationContext.CredentialService.GetCredential(ctx, credentialID)
+}
+
+// TransferToAgent transfers control to another agent.
+func (tc *ToolContext) TransferToAgent(agentName string) {
+	tc.Actions.TransferToAgent = &agentName
+}
+
+// Escalate signals that the interaction should be escalated.
+func (tc *ToolContext) Escalate() {
+	escalate := true
+	tc.Actions.Escalate = &escalate
+}
+
+// SkipSummarization signals that summarization should be skipped.
+func (tc *ToolContext) SkipSummarization() {
+	skip := true
+	tc.Actions.SkipSummarization = &skip
+}
+
+// SetState sets a value in the session state.
+func (tc *ToolContext) SetState(key string, value any) {
+	if tc.Actions.StateDelta == nil {
+		tc.Actions.StateDelta = make(map[string]any)
+	}
+	tc.Actions.StateDelta[key] = value
+}
+
+// GetState retrieves a value from the session state.
+func (tc *ToolContext) GetState(key string) (any, bool) {
+	// First check the state delta
+	if tc.Actions.StateDelta != nil {
+		if value, exists := tc.Actions.StateDelta[key]; exists {
+			return value, true
+		}
+	}
+
+	// Then check the session state
+	if tc.InvocationContext.Session != nil && tc.InvocationContext.Session.State != nil {
+		value, exists := tc.InvocationContext.Session.State[key]
+		return value, exists
+	}
+
+	return nil, false
+}
+
+// GetStateWithDefault retrieves a value from the session state with a default fallback.
+func (tc *ToolContext) GetStateWithDefault(key string, defaultValue any) any {
+	if value, exists := tc.GetState(key); exists {
+		return value
+	}
+	return defaultValue
 }
 
 // ReadonlyContext provides read-only access to context information.

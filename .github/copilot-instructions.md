@@ -78,7 +78,12 @@ ADK follows a **event-driven, multi-agent architecture** with these key principl
 - **Event-based communication**: All interactions flow through structured Events
 
 ## 2. Core Components
-
+- Agent: The blueprint. It defines an agent's identity, instructions, and tools. It's a declarative configuration object.
+- Tool: A capability. A Python function an agent can call to interact with the world (e.g., search, API call).
+- Runner: The engine. It orchestrates the "Reason-Act" loop, manages LLM calls, and executes tools.
+- Session: The conversation state. It holds the history for a single, continuous dialogue.
+- Memory: Long-term recall across different sessions.
+- Artifact Service: Manages non-textual data like files.
 ### 2.1 Event System
 
 **Event Structure** (event.py):
