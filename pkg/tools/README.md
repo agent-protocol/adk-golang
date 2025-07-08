@@ -1,8 +1,107 @@
-# Enhanced FunctionTool Implementation
+# ADK Go Tools Package
 
-This implementation provides an advanced FunctionTool system for the ADK Go framework that can wrap Go functions and make them callable by AI agents. It includes comprehensive parameter validation, JSON schema generation, and enhanced ToolContext functionality.
+This package provides a comprehensive set of tools for the ADK Go framework, including function tools, Google Search integration, and multi-agent workflow capabilities.
 
-## Features
+## Available Tools
+
+### 🔍 Google Search Tool
+
+The Google Search Tool is a built-in tool that enables agents to perform web searches using Google's search capabilities through Gemini models.
+
+#### Features
+- **Built-in Integration**: Works seamlessly with Gemini 1.x and 2.x models
+- **Model-Aware**: Automatically configures based on the model version
+- **Validation**: Enforces constraints for different model versions
+- **Error Handling**: Provides clear error messages for unsupported configurations
+
+#### Usage
+```go
+import "github.com/agent-protocol/adk-golang/pkg/tools"
+
+// Create an agent with Google Search capability
+googleSearch := tools.GlobalGoogleSearchTool
+
+config := &agents.LlmAgentConfig{
+    Model: "gemini-2.0-flash",
+}
+agent := agents.NewEnhancedLlmAgent(
+    "search_agent",
+    "An agent that can search the web",
+    config,
+)
+agent.AddTool(googleSearch)
+```
+
+#### Constraints
+- **Gemini 1.x**: Cannot be used with other tools
+- **Gemini 2.x+**: Can be combined with other tools
+- **Non-Gemini models**: Not supported
+
+### 🤖 Enhanced Agent Tool
+
+The Enhanced Agent Tool allows one agent to call another agent as a tool, enabling sophisticated multi-agent workflows.
+
+#### Features
+- **Agent Wrapping**: Converts any agent into a callable tool
+- **Error Strategies**: Multiple ways to handle agent errors
+- **State Management**: Configurable state isolation
+- **Timeout Support**: Configurable execution timeouts
+- **Context Passing**: Support for additional context parameters
+
+#### Error Strategies
+1. **ErrorStrategyPropagate**: Propagates errors up to the calling agent (default)
+2. **ErrorStrategyReturnError**: Returns errors as string results
+3. **ErrorStrategyReturnEmpty**: Returns empty results on errors
+
+#### Usage Examples
+
+##### Basic Usage
+```go
+// Create a specialist agent
+mathAgent := agents.NewEnhancedLlmAgent(
+    "math_specialist",
+    "A mathematical problem solver",
+    config,
+)
+
+// Wrap as a tool
+mathTool := tools.NewEnhancedAgentTool(mathAgent)
+
+// Use in another agent
+coordinatorAgent.AddTool(mathTool)
+```
+
+##### Advanced Configuration
+```go
+// Create with custom configuration
+config := &tools.AgentToolConfig{
+    Timeout:           30 * time.Second,
+    IsolateState:      false, // Share state between agents
+    ErrorStrategy:     tools.ErrorStrategyReturnError,
+    CustomInstruction: "Focus on step-by-step solutions",
+}
+
+mathTool := tools.NewEnhancedAgentToolWithConfig(mathAgent, config)
+```
+
+##### Multi-Agent Workflow
+```go
+// Create specialist agents
+researchAgent := agents.NewEnhancedLlmAgent(...)
+analysisAgent := agents.NewEnhancedLlmAgent(...)
+writingAgent := agents.NewEnhancedLlmAgent(...)
+
+// Create tools from agents
+researchTool := tools.NewEnhancedAgentTool(researchAgent)
+analysisTool := tools.NewEnhancedAgentTool(analysisAgent)
+writingTool := tools.NewEnhancedAgentTool(writingAgent)
+
+// Create coordinator that uses all specialist tools
+coordinator := agents.NewEnhancedLlmAgent(...)
+coordinator.AddTool(researchTool)
+coordinator.AddTool(analysisTool)
+coordinator.AddTool(writingTool)
+```
 
 ### 🚀 Enhanced FunctionTool
 

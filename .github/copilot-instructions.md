@@ -33,6 +33,7 @@ And we're working to implement an Golang API.
 
 # Development Instructions:
 - Follow SOLID principles
+- ALWAYS check adk-python implementation for reference
 - Follow Go idioms and best practices
 - Use gofmt for formatting
 - Use go vet and static analysis tools
