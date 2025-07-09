@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -116,26 +115,73 @@ func NewServer(config *ServerConfig) (*Server, error) {
 	return server, nil
 }
 
-// setupRoutes configures all HTTP routes
+// setupRoutes configures all HTTP routes using Go 1.22+ pattern matching
+// Pattern format: "METHOD /path/with/{wildcard}/segments"
+// Wildcards are extracted using r.PathValue("wildcard_name")
 func (s *Server) setupRoutes() {
 	s.router = http.NewServeMux()
 
-	// API routes
-	s.router.HandleFunc("/list-apps", s.handleListApps)
-	s.router.HandleFunc("/run", s.handleRun)
-	s.router.HandleFunc("/run_sse", s.handleRunSSE)
-	s.router.HandleFunc("/run_live", s.handleRunLive) // WebSocket endpoint
+	// General API routes
+	s.router.HandleFunc("GET /list-apps", s.handleListApps)
+	s.router.HandleFunc("POST /run", s.handleRun)
+	s.router.HandleFunc("POST /run_sse", s.handleRunSSE)
+	s.router.HandleFunc("GET /run_live", s.handleRunLive) // WebSocket endpoint
+	s.router.HandleFunc("GET /health", s.handleHealth)
 
-	// Session management routes
-	s.router.HandleFunc("/apps/", s.handleSessionRoutes)
+	// Session management routes with pattern matching
+	s.router.HandleFunc("GET /apps/{app_name}/users/{user_id}/sessions", s.wrapListSessions)
+	s.router.HandleFunc("POST /apps/{app_name}/users/{user_id}/sessions", s.wrapCreateSession)
+	s.router.HandleFunc("GET /apps/{app_name}/users/{user_id}/sessions/{session_id}", s.wrapGetSession)
+	s.router.HandleFunc("POST /apps/{app_name}/users/{user_id}/sessions/{session_id}", s.wrapCreateSessionWithID)
+	s.router.HandleFunc("DELETE /apps/{app_name}/users/{user_id}/sessions/{session_id}", s.wrapDeleteSession)
 
-	// Health check
-	s.router.HandleFunc("/health", s.handleHealth)
+	// Future artifact routes (TODO: implement)
+	s.router.HandleFunc("GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts", s.handleNotImplemented)
+	s.router.HandleFunc("POST /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts", s.handleNotImplemented)
 
 	// A2A routes (if enabled)
 	if s.config.A2AEnabled {
 		s.setupA2ARoutes()
 	}
+}
+
+// Wrapper functions for pattern matching routes
+
+func (s *Server) wrapListSessions(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app_name")
+	userID := r.PathValue("user_id")
+	s.handleListSessions(w, r, appName, userID)
+}
+
+func (s *Server) wrapCreateSession(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app_name")
+	userID := r.PathValue("user_id")
+	s.handleCreateSession(w, r, appName, userID)
+}
+
+func (s *Server) wrapGetSession(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app_name")
+	userID := r.PathValue("user_id")
+	sessionID := r.PathValue("session_id")
+	s.handleGetSession(w, r, appName, userID, sessionID)
+}
+
+func (s *Server) wrapCreateSessionWithID(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app_name")
+	userID := r.PathValue("user_id")
+	sessionID := r.PathValue("session_id")
+	s.handleCreateSessionWithID(w, r, appName, userID, sessionID)
+}
+
+func (s *Server) wrapDeleteSession(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app_name")
+	userID := r.PathValue("user_id")
+	sessionID := r.PathValue("session_id")
+	s.handleDeleteSession(w, r, appName, userID, sessionID)
+}
+
+func (s *Server) handleNotImplemented(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
 }
 
 // Start starts the HTTP server
@@ -163,11 +209,6 @@ func (s *Server) Start() error {
 
 // handleListApps returns available agents
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	agents, err := s.agentLoader.ListAgents()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to list agents: %v", err), http.StatusInternalServerError)
@@ -180,11 +221,6 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 
 // handleRun handles synchronous agent execution
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var req AgentRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -228,11 +264,6 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 // handleRunSSE handles Server-Sent Events streaming
 func (s *Server) handleRunSSE(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var req AgentRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -409,63 +440,8 @@ func (s *Server) handleWebSocketSession(conn *websocket.Conn, runner *runners.Ru
 	}
 }
 
-// handleSessionRoutes handles session-related routes
-func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/apps/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) < 4 {
-		http.Error(w, "Invalid URL path", http.StatusBadRequest)
-		return
-	}
-
-	appName := parts[0]
-	// parts[1] should be "users"
-	userID := parts[2]
-	// parts[3] should be "sessions"
-
-	if len(parts) == 4 {
-		// /apps/{app_name}/users/{user_id}/sessions
-		switch r.Method {
-		case http.MethodGet:
-			s.handleListSessions(w, r, appName, userID)
-		case http.MethodPost:
-			s.handleCreateSession(w, r, appName, userID)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	sessionID := parts[4]
-
-	if len(parts) == 5 {
-		// /apps/{app_name}/users/{user_id}/sessions/{session_id}
-		switch r.Method {
-		case http.MethodGet:
-			s.handleGetSession(w, r, appName, userID, sessionID)
-		case http.MethodPost:
-			s.handleCreateSessionWithID(w, r, appName, userID, sessionID)
-		case http.MethodDelete:
-			s.handleDeleteSession(w, r, appName, userID, sessionID)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	// Handle other session sub-routes (artifacts, etc.)
-	// TODO: Implement artifact routes
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
-}
-
 // handleHealth returns server health status
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "healthy",
@@ -533,17 +509,11 @@ func convertToContent(message map[string]interface{}) (*core.Content, bool) {
 
 // setupA2ARoutes configures A2A protocol routes
 func (s *Server) setupA2ARoutes() {
-	// TODO: Implement A2A routes
-	s.router.HandleFunc("/a2a", s.handleA2A)
+	s.router.HandleFunc("POST /a2a", s.handleA2A)
 }
 
 // handleA2A handles A2A protocol requests
 func (s *Server) handleA2A(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Parse A2A request
 	var req map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -672,7 +642,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request, appNam
 		UserID:    userID,
 		SessionID: sessionID,
 	})
-	if err != nil {
+	if err != nil || session == nil {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
