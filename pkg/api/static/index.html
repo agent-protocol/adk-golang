@@ -72,6 +72,61 @@
             background: #007bff;
             color: white;
         }
+        .session-list {
+            margin-bottom: 20px;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        .session-list h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .new-session-btn {
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .new-session-btn:hover {
+            background: #218838;
+        }
+        .session-item {
+            padding: 8px;
+            margin: 3px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 12px;
+        }
+        .session-item:hover {
+            background: #e9ecef;
+        }
+        .session-item.active {
+            background: #17a2b8;
+            color: white;
+        }
+        .session-item .session-id {
+            font-weight: bold;
+            color: #333;
+        }
+        .session-item.active .session-id {
+            color: white;
+        }
+        .session-item .session-time {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+        .session-item.active .session-time {
+            color: #e9ecef;
+        }
         .chat-messages {
             flex: 1;
             border: 1px solid #ddd;
@@ -207,9 +262,16 @@
         <div class="main-content">
             <div class="sidebar">
                 <div class="agent-list">
-                    <h3>Available Agents</h3>
+                    <h3>Please Select an Agent</h3>
                     <div id="agents-container">
                         <div class="loading">Loading agents...</div>
+                    </div>
+                </div>
+                <div class="session-list" id="session-list" style="display: none;">
+                    <h3>Sessions</h3>
+                    <button onclick="createNewSession()" class="new-session-btn">+ New Session</button>
+                    <div id="sessions-container">
+                        <div class="loading">Loading sessions...</div>
                     </div>
                 </div>
                 <div class="status" id="status">
@@ -282,10 +344,132 @@
             event.target.classList.add('active');
             
             currentAgent = agentName;
+            currentSession = null;
             
-            // Create a new session
+            // Clear messages and disable input until session is selected
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('messageInput').disabled = true;
+            document.getElementById('sendButton').disabled = true;
+            
+            // Show session list and load sessions
+            document.getElementById('session-list').style.display = 'block';
+            showStatus(`Loading sessions for ${agentName}...`);
+            
             try {
-                const response = await fetch(`/apps/${agentName}/users/test-user/sessions`, {
+                await loadSessions();
+                showStatus(`Agent: ${agentName} - Please select or create a session`);
+            } catch (error) {
+                showError('Failed to load sessions: ' + error.message);
+            }
+        }
+
+        // Load sessions for the current agent
+        async function loadSessions() {
+            if (!currentAgent) return;
+            
+            try {
+                const response = await fetch(`/apps/${currentAgent}/users/test-user/sessions`);
+                const sessions = await response.json();
+                
+                const container = document.getElementById('sessions-container');
+                container.innerHTML = '';
+                
+                if (!sessions || sessions.length === 0) {
+                    container.innerHTML = '<div class="session-item">No existing sessions</div>';
+                    return;
+                }
+                
+                sessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = 'session-item';
+                    item.onclick = () => selectSession(session.id);
+                    
+                    const lastUpdate = new Date(session.last_update_time * 1000);
+                    const timeStr = lastUpdate.toLocaleString();
+                    
+                    item.innerHTML = `
+                        <div class="session-id">${session.id}</div>
+                        <div class="session-time">Last: ${timeStr}</div>
+                    `;
+                    container.appendChild(item);
+                });
+            } catch (error) {
+                const container = document.getElementById('sessions-container');
+                container.innerHTML = '<div class="session-item">Failed to load sessions</div>';
+                throw error;
+            }
+        }
+
+        // Select a session (existing)
+        async function selectSession(sessionId) {
+            if (!currentAgent) return;
+            
+            // Update UI
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            currentSession = sessionId;
+            
+            // Clear messages and enable input
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendButton').disabled = false;
+            document.getElementById('messageInput').focus();
+            
+            // Load existing session data
+            try {
+                const response = await fetch(`/apps/${currentAgent}/users/test-user/sessions/${sessionId}`);
+                const session = await response.json();
+                
+                // Display existing events if any
+                if (session.events && session.events.length > 0) {
+                    addSystemMessage(`📜 Loaded ${session.events.length} previous events from session`);
+                    
+                    // Optionally display recent events (last 5)
+                    const recentEvents = session.events.slice(-5);
+                    recentEvents.forEach(event => {
+                        if (event.content && event.content.parts) {
+                            const author = event.author || 'system';
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = `message ${author.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                            
+                            const header = document.createElement('div');
+                            header.className = 'message-header';
+                            header.textContent = `${author.toUpperCase()} [PREVIOUS]`;
+                            messageDiv.appendChild(header);
+                            
+                            event.content.parts.forEach(part => {
+                                if (part.type === 'text' && part.text) {
+                                    const partDiv = document.createElement('div');
+                                    partDiv.className = 'text-content';
+                                    partDiv.textContent = part.text;
+                                    messageDiv.appendChild(partDiv);
+                                }
+                            });
+                            
+                            const messages = document.getElementById('messages');
+                            messages.appendChild(messageDiv);
+                        }
+                    });
+                    
+                    const messages = document.getElementById('messages');
+                    messages.scrollTop = messages.scrollHeight;
+                }
+                
+                showStatus(`Resumed session: ${sessionId} (${session.events?.length || 0} events)`);
+            } catch (error) {
+                showError('Failed to load session: ' + error.message);
+            }
+        }
+
+        // Create a new session
+        async function createNewSession() {
+            if (!currentAgent) return;
+            
+            try {
+                const response = await fetch(`/apps/${currentAgent}/users/test-user/sessions`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -302,7 +486,19 @@
                 document.getElementById('sendButton').disabled = false;
                 document.getElementById('messageInput').focus();
                 
-                showStatus(`Connected to agent: ${agentName}`);
+                // Refresh sessions list
+                await loadSessions();
+                
+                // Auto-select the new session
+                document.querySelectorAll('.session-item').forEach(item => {
+                    item.classList.remove('active');
+                    if (item.textContent.includes(session.id)) {
+                        item.classList.add('active');
+                    }
+                });
+                
+                addSystemMessage(`🎉 Created new session: ${session.id}`);
+                showStatus(`New session created: ${session.id}`);
             } catch (error) {
                 showError('Failed to create session: ' + error.message);
             }
@@ -314,6 +510,9 @@
             const message = input.value.trim();
             
             if (!message || !currentAgent || !currentSession || isLoading) {
+                if (!currentSession && currentAgent) {
+                    showError('Please select or create a session first');
+                }
                 return;
             }
             
@@ -462,7 +661,7 @@
                 document.getElementById('sendButton').disabled = false;
                 input.focus();
                 isLoading = false;
-                showStatus(`Connected to agent: ${currentAgent}`);
+                showStatus(`Session: ${currentSession} (${currentAgent})`);
             }
         }
 
