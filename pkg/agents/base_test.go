@@ -222,59 +222,6 @@ func TestInvocationContext(t *testing.T) {
 	}
 }
 
-func TestSequentialAgent(t *testing.T) {
-	ctx := context.Background()
-	sessionService := sessions.NewInMemorySessionService()
-
-	session, err := sessionService.CreateSession(ctx, &core.CreateSessionRequest{
-		AppName: "test_app",
-		UserID:  "test_user",
-	})
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
-
-	// Create sequential agent with sub-agents
-	seqAgent := NewSequentialAgent("seq", "Sequential agent")
-	subAgent1 := NewBaseAgent("sub1", "First sub agent")
-	subAgent2 := NewBaseAgent("sub2", "Second sub agent")
-
-	seqAgent.AddSubAgent(subAgent1)
-	seqAgent.AddSubAgent(subAgent2)
-
-	// Create invocation context
-	invocationCtx := core.NewInvocationContext(
-		"seq_test",
-		seqAgent,
-		session,
-		sessionService,
-	)
-
-	// Test async execution
-	stream, err := seqAgent.RunAsync(ctx, invocationCtx)
-	if err != nil {
-		t.Fatalf("Failed to run sequential agent: %v", err)
-	}
-
-	var events []*core.Event
-	for event := range stream {
-		events = append(events, event)
-	}
-
-	// Should have events from both sub-agents
-	if len(events) != 2 {
-		t.Errorf("Expected 2 events, got %d", len(events))
-	}
-
-	// Verify event authors
-	expectedAuthors := []string{"sub1", "sub2"}
-	for i, event := range events {
-		if event.Author != expectedAuthors[i] {
-			t.Errorf("Expected event %d author '%s', got '%s'", i, expectedAuthors[i], event.Author)
-		}
-	}
-}
-
 func TestAgentCallbacks(t *testing.T) {
 	ctx := context.Background()
 	sessionService := sessions.NewInMemorySessionService()

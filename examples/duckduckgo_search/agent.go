@@ -56,7 +56,7 @@ func init() {
 	}
 
 	// Create the LLM agent
-	agent := agents.NewEnhancedLlmAgent(
+	agent := agents.NewLLMAgent(
 		"duckduckgo_search_agent",
 		"Agent to answer questions using DuckDuckGo Search", // Description
 		agentConfig,

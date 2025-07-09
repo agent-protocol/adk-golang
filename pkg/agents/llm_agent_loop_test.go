@@ -20,7 +20,7 @@ func TestEnhancedLlmAgent_ToolCallLimitExceeded(t *testing.T) {
 		MaxToolCalls:  1, // Very low limit to trigger quickly
 		RetryAttempts: 1, // At least 1 retry attempt
 	}
-	agent := NewEnhancedLlmAgent("test-agent", "Test agent", config)
+	agent := NewLLMAgent("test-agent", "Test agent", config)
 
 	// Setup mock LLM connection with multiple responses to trigger the limit
 	// With MaxToolCalls=1, total limit = 1*2 = 2, so we need 3+ tool calls to exceed it
@@ -196,7 +196,7 @@ func TestEnhancedLlmAgent_RepeatingPatternDetection(t *testing.T) {
 		MaxToolCalls:  5, // Higher limit to test pattern detection
 		RetryAttempts: 1,
 	}
-	agent := NewEnhancedLlmAgent("test-agent", "Test agent", config)
+	agent := NewLLMAgent("test-agent", "Test agent", config)
 
 	// Setup mock LLM connection - simulate the same tool being called repeatedly
 	// This should trigger pattern detection after 3 consecutive calls
@@ -302,7 +302,7 @@ func TestEnhancedLlmAgent_NormalCompletion(t *testing.T) {
 		MaxToolCalls:  10,
 		RetryAttempts: 1,
 	}
-	agent := NewEnhancedLlmAgent("test-agent", "Test agent", config)
+	agent := NewLLMAgent("test-agent", "Test agent", config)
 
 	// Setup mock LLM connection
 	mockResponses := []*core.LLMResponse{

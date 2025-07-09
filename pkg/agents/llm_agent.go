@@ -95,25 +95,23 @@ type LlmAgentCallbacks struct {
 	AfterToolCallback   core.AfterAgentCallback
 }
 
-// EnhancedLlmAgent is an enhanced implementation of an LLM-based agent with comprehensive tool execution.
-type EnhancedLlmAgent struct {
+// LLMAgent is an enhanced implementation of an LLM-based agent with comprehensive tool execution.
+type LLMAgent struct {
 	*BaseAgentImpl
 	config        *LlmAgentConfig
 	tools         []core.BaseTool
 	toolMap       map[string]core.BaseTool
-	inputSchema   interface{}
-	outputSchema  interface{}
 	llmConnection core.LLMConnection
 	callbacks     *LlmAgentCallbacks
 }
 
-// NewEnhancedLlmAgent creates a new enhanced LLM agent with the specified configuration.
-func NewEnhancedLlmAgent(name, description string, config *LlmAgentConfig) *EnhancedLlmAgent {
+// NewLLMAgent creates a new enhanced LLM agent with the specified configuration.
+func NewLLMAgent(name, description string, config *LlmAgentConfig) *LLMAgent {
 	if config == nil {
 		config = DefaultLlmAgentConfig()
 	}
 
-	agent := &EnhancedLlmAgent{
+	agent := &LLMAgent{
 		BaseAgentImpl: NewBaseAgent(name, description),
 		config:        config,
 		tools:         make([]core.BaseTool, 0),
@@ -130,12 +128,12 @@ func NewEnhancedLlmAgent(name, description string, config *LlmAgentConfig) *Enha
 }
 
 // Config returns the agent's configuration.
-func (a *EnhancedLlmAgent) Config() *LlmAgentConfig {
+func (a *LLMAgent) Config() *LlmAgentConfig {
 	return a.config
 }
 
 // SetConfig updates the agent's configuration.
-func (a *EnhancedLlmAgent) SetConfig(config *LlmAgentConfig) {
+func (a *LLMAgent) SetConfig(config *LlmAgentConfig) {
 	a.config = config
 	if config.SystemInstruction != nil {
 		a.SetInstruction(*config.SystemInstruction)
@@ -143,28 +141,28 @@ func (a *EnhancedLlmAgent) SetConfig(config *LlmAgentConfig) {
 }
 
 // Model returns the LLM model name.
-func (a *EnhancedLlmAgent) Model() string {
+func (a *LLMAgent) Model() string {
 	return a.config.Model
 }
 
 // SetModel sets the LLM model name.
-func (a *EnhancedLlmAgent) SetModel(model string) {
+func (a *LLMAgent) SetModel(model string) {
 	a.config.Model = model
 }
 
 // Tools returns the available tools for this agent.
-func (a *EnhancedLlmAgent) Tools() []core.BaseTool {
+func (a *LLMAgent) Tools() []core.BaseTool {
 	return a.tools
 }
 
 // AddTool adds a tool to this agent.
-func (a *EnhancedLlmAgent) AddTool(tool core.BaseTool) {
+func (a *LLMAgent) AddTool(tool core.BaseTool) {
 	a.tools = append(a.tools, tool)
 	a.toolMap[tool.Name()] = tool
 }
 
 // RemoveTool removes a tool from this agent.
-func (a *EnhancedLlmAgent) RemoveTool(toolName string) bool {
+func (a *LLMAgent) RemoveTool(toolName string) bool {
 	if _, exists := a.toolMap[toolName]; !exists {
 		return false
 	}
@@ -183,33 +181,23 @@ func (a *EnhancedLlmAgent) RemoveTool(toolName string) bool {
 }
 
 // GetTool retrieves a tool by name.
-func (a *EnhancedLlmAgent) GetTool(name string) (core.BaseTool, bool) {
+func (a *LLMAgent) GetTool(name string) (core.BaseTool, bool) {
 	tool, exists := a.toolMap[name]
 	return tool, exists
 }
 
 // SetLLMConnection sets the LLM connection for this agent.
-func (a *EnhancedLlmAgent) SetLLMConnection(conn core.LLMConnection) {
+func (a *LLMAgent) SetLLMConnection(conn core.LLMConnection) {
 	a.llmConnection = conn
 }
 
 // SetCallbacks sets the callback functions for this agent.
-func (a *EnhancedLlmAgent) SetCallbacks(callbacks *LlmAgentCallbacks) {
+func (a *LLMAgent) SetCallbacks(callbacks *LlmAgentCallbacks) {
 	a.callbacks = callbacks
 }
 
-// SetInputSchema sets the input validation schema.
-func (a *EnhancedLlmAgent) SetInputSchema(schema interface{}) {
-	a.inputSchema = schema
-}
-
-// SetOutputSchema sets the output validation schema.
-func (a *EnhancedLlmAgent) SetOutputSchema(schema interface{}) {
-	a.outputSchema = schema
-}
-
 // RunAsync executes the LLM agent with comprehensive tool execution pipeline.
-func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	log.Printf("Starting RunAsync for agent: %s", a.name)
 	if a.llmConnection == nil {
 		log.Printf("LLM connection not configured for agent: %s", a.name)
@@ -248,7 +236,7 @@ func (a *EnhancedLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.Inv
 }
 
 // executeConversationFlow manages the complete conversation flow including tool execution.
-func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
+func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
 	log.Println("Starting conversation flow...")
 
 	flowManager := NewConversationFlowManager(a, invocationCtx)
@@ -330,7 +318,7 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 }
 
 // processLLMTurn processes a single LLM turn and returns the event and whether to continue
-func (a *EnhancedLlmAgent) processLLMTurn(ctx context.Context, invocationCtx *core.InvocationContext, turn int) (*core.Event, bool, error) {
+func (a *LLMAgent) processLLMTurn(ctx context.Context, invocationCtx *core.InvocationContext, turn int) (*core.Event, bool, error) {
 	// Log user input if present
 	if invocationCtx.UserContent != nil {
 		log.Printf("User input: %s", formatContent(invocationCtx.UserContent))
@@ -396,7 +384,7 @@ func (e ErrConversationComplete) Error() string {
 }
 
 // checkLoopConditions checks various loop conditions and handles them
-func (a *EnhancedLlmAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, flowManager *ConversationFlowManager, functionCalls []*core.FunctionCall, turn int) error {
+func (a *LLMAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, flowManager *ConversationFlowManager, functionCalls []*core.FunctionCall, turn int) error {
 	// Check total tool calls limit to prevent infinite loops
 	if flowManager.loopDetector.CheckToolCallLimit(functionCalls, flowManager.maxToolCalls) {
 		log.Printf("Maximum total tool calls exceeded: %d (max: %d)", flowManager.loopDetector.totalToolCalls, flowManager.maxToolCalls)
@@ -424,7 +412,7 @@ func (a *EnhancedLlmAgent) checkLoopConditions(ctx context.Context, invocationCt
 }
 
 // processToolCalls processes tool calls and publishes events
-func (a *EnhancedLlmAgent) processToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, event *core.Event, functionCalls []*core.FunctionCall) error {
+func (a *LLMAgent) processToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, event *core.Event, functionCalls []*core.FunctionCall) error {
 	// Validate function call arguments (allow empty args for no-parameter functions)
 	for _, funcCall := range functionCalls {
 		if funcCall.Args == nil {
@@ -473,7 +461,7 @@ func (a *EnhancedLlmAgent) processToolCalls(ctx context.Context, invocationCtx *
 }
 
 // executeToolCalls executes all function calls and returns their responses.
-func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
+func (a *LLMAgent) executeToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
 	log.Println("Starting tool execution...")
 
 	// Execute before-tool callback
@@ -580,7 +568,7 @@ func (a *EnhancedLlmAgent) executeToolCalls(ctx context.Context, invocationCtx *
 }
 
 // executeToolWithTimeout executes a tool with the configured timeout.
-func (a *EnhancedLlmAgent) executeToolWithTimeout(ctx context.Context, tool core.BaseTool, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (a *LLMAgent) executeToolWithTimeout(ctx context.Context, tool core.BaseTool, args map[string]any, toolCtx *core.ToolContext) (any, error) {
 	// Create context with timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, a.config.ToolCallTimeout)
 	defer cancel()
@@ -595,7 +583,7 @@ func (a *EnhancedLlmAgent) executeToolWithTimeout(ctx context.Context, tool core
 }
 
 // makeRetriableLLMCall makes an LLM call with retry logic.
-func (a *EnhancedLlmAgent) makeRetriableLLMCall(ctx context.Context, request *core.LLMRequest) (*core.LLMResponse, error) {
+func (a *LLMAgent) makeRetriableLLMCall(ctx context.Context, request *core.LLMRequest) (*core.LLMResponse, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < a.config.RetryAttempts; attempt++ {
@@ -626,7 +614,7 @@ func (a *EnhancedLlmAgent) makeRetriableLLMCall(ctx context.Context, request *co
 }
 
 // isRetryableError determines if an error is retryable.
-func (a *EnhancedLlmAgent) isRetryableError(err error) bool {
+func (a *LLMAgent) isRetryableError(err error) bool {
 	// Simple implementation - can be enhanced based on specific error types
 	errStr := strings.ToLower(err.Error())
 	retryablePatterns := []string{
@@ -650,7 +638,7 @@ func (a *EnhancedLlmAgent) isRetryableError(err error) bool {
 }
 
 // buildLLMRequest constructs an LLM request from the session context using functional programming style.
-func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext) (*core.LLMRequest, error) {
+func (a *LLMAgent) buildLLMRequest(invocationCtx *core.InvocationContext) (*core.LLMRequest, error) {
 	log.Println("Building LLM request...")
 
 	// Step 1: Start with empty contents and build step by step
@@ -682,7 +670,7 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 }
 
 // addSystemInstruction adds system instruction to contents if present.
-func (a *EnhancedLlmAgent) addSystemInstruction(contents []core.Content) []core.Content {
+func (a *LLMAgent) addSystemInstruction(contents []core.Content) []core.Content {
 	if a.instruction == "" {
 		return contents
 	}
@@ -702,7 +690,7 @@ func (a *EnhancedLlmAgent) addSystemInstruction(contents []core.Content) []core.
 }
 
 // addSessionHistory adds session events to contents, excluding system messages.
-func (a *EnhancedLlmAgent) addSessionHistory(contents []core.Content, events []*core.Event) []core.Content {
+func (a *LLMAgent) addSessionHistory(contents []core.Content, events []*core.Event) []core.Content {
 	for _, event := range events {
 		if event.Content != nil && event.Content.Role != "system" {
 			contents = append(contents, *event.Content)
@@ -713,7 +701,7 @@ func (a *EnhancedLlmAgent) addSessionHistory(contents []core.Content, events []*
 }
 
 // addUserContentIfNew adds user content only if it's not already in the session.
-func (a *EnhancedLlmAgent) addUserContentIfNew(contents []core.Content, userContent *core.Content) []core.Content {
+func (a *LLMAgent) addUserContentIfNew(contents []core.Content, userContent *core.Content) []core.Content {
 	if userContent == nil {
 		return contents
 	}
@@ -729,7 +717,7 @@ func (a *EnhancedLlmAgent) addUserContentIfNew(contents []core.Content, userCont
 }
 
 // isUserContentDuplicate checks if the user content is already present in contents.
-func (a *EnhancedLlmAgent) isUserContentDuplicate(contents []core.Content, userContent *core.Content) bool {
+func (a *LLMAgent) isUserContentDuplicate(contents []core.Content, userContent *core.Content) bool {
 	if len(contents) == 0 {
 		return false
 	}
@@ -744,7 +732,7 @@ func (a *EnhancedLlmAgent) isUserContentDuplicate(contents []core.Content, userC
 }
 
 // contentsEqual compares two Content objects for equality.
-func (a *EnhancedLlmAgent) contentsEqual(content1, content2 *core.Content) bool {
+func (a *LLMAgent) contentsEqual(content1, content2 *core.Content) bool {
 	if content1.Role != content2.Role {
 		return false
 	}
@@ -769,7 +757,7 @@ func (a *EnhancedLlmAgent) contentsEqual(content1, content2 *core.Content) bool 
 }
 
 // buildToolDeclarations creates tool declarations from available tools.
-func (a *EnhancedLlmAgent) buildToolDeclarations() []*core.FunctionDeclaration {
+func (a *LLMAgent) buildToolDeclarations() []*core.FunctionDeclaration {
 	var tools []*core.FunctionDeclaration
 
 	for _, tool := range a.tools {
@@ -784,7 +772,7 @@ func (a *EnhancedLlmAgent) buildToolDeclarations() []*core.FunctionDeclaration {
 }
 
 // createLLMConfig creates the LLM configuration object.
-func (a *EnhancedLlmAgent) createLLMConfig(tools []*core.FunctionDeclaration) *core.LLMConfig {
+func (a *LLMAgent) createLLMConfig(tools []*core.FunctionDeclaration) *core.LLMConfig {
 	config := &core.LLMConfig{
 		Model:             a.config.Model,
 		Temperature:       a.config.Temperature,
@@ -800,7 +788,7 @@ func (a *EnhancedLlmAgent) createLLMConfig(tools []*core.FunctionDeclaration) *c
 }
 
 // logRequestContents logs the final conversation contents for debugging.
-func (a *EnhancedLlmAgent) logRequestContents(contents []core.Content) {
+func (a *LLMAgent) logRequestContents(contents []core.Content) {
 	log.Printf("LLM Request Contents (%d items):", len(contents))
 	for i, content := range contents {
 		log.Printf("  [%d] Role: %s, Parts: %d", i, content.Role, len(content.Parts))
@@ -824,7 +812,7 @@ func (a *EnhancedLlmAgent) logRequestContents(contents []core.Content) {
 }
 
 // Run is a synchronous wrapper around RunAsync.
-func (a *EnhancedLlmAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+func (a *LLMAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
 	stream, err := a.RunAsync(ctx, invocationCtx)
 	if err != nil {
 		return nil, err
@@ -843,155 +831,4 @@ func (a *EnhancedLlmAgent) Run(ctx context.Context, invocationCtx *core.Invocati
 	}
 
 	return events, nil
-}
-
-// StreamingLlmAgent extends EnhancedLlmAgent with streaming capabilities.
-type StreamingLlmAgent struct {
-	*EnhancedLlmAgent
-}
-
-// NewStreamingLlmAgent creates a new streaming LLM agent.
-func NewStreamingLlmAgent(name, description string, config *LlmAgentConfig) *StreamingLlmAgent {
-	if config == nil {
-		config = DefaultLlmAgentConfig()
-	}
-	config.StreamingEnabled = true
-
-	return &StreamingLlmAgent{
-		EnhancedLlmAgent: NewEnhancedLlmAgent(name, description, config),
-	}
-}
-
-// RunAsync executes the streaming LLM agent with real-time response streaming.
-func (a *StreamingLlmAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
-	if a.llmConnection == nil {
-		return nil, fmt.Errorf("LLM connection not configured for agent %s", a.name)
-	}
-
-	// Execute before-agent callback if present
-	if a.beforeAgentCallback != nil {
-		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
-			return nil, fmt.Errorf("before-agent callback failed: %w", err)
-		}
-	}
-
-	eventChan := make(chan *core.Event, 10)
-
-	go func() {
-		defer close(eventChan)
-
-		if err := a.executeStreamingConversationFlow(ctx, invocationCtx, eventChan); err != nil {
-			// Send error event
-			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Streaming conversation flow failed: %v", err))
-
-			select {
-			case eventChan <- errorEvent:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return eventChan, nil
-}
-
-// executeStreamingConversationFlow manages streaming conversation flow.
-func (a *StreamingLlmAgent) executeStreamingConversationFlow(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
-	// Build LLM request
-	request, err := a.buildLLMRequest(invocationCtx)
-	if err != nil {
-		return fmt.Errorf("failed to build LLM request: %w", err)
-	}
-
-	// Execute before-model callback
-	if a.callbacks.BeforeModelCallback != nil {
-		if err := a.callbacks.BeforeModelCallback(ctx, invocationCtx); err != nil {
-			return fmt.Errorf("before-model callback failed: %w", err)
-		}
-	}
-
-	// Make streaming LLM call
-	responseStream, err := a.llmConnection.GenerateContentStream(ctx, request)
-	if err != nil {
-		return fmt.Errorf("streaming LLM request failed: %w", err)
-	}
-
-	var accumulatedContent *core.Content
-	var finalEvent *core.Event
-
-	// Process streaming responses
-	for response := range responseStream {
-		// Create event from streaming response
-		event := core.NewEvent(invocationCtx.InvocationID, a.name)
-		event.Content = response.Content
-		event.Partial = response.Partial
-
-		// Accumulate content for final processing
-		if accumulatedContent == nil {
-			accumulatedContent = response.Content
-		} else {
-			// Merge content parts
-			if response.Content != nil {
-				accumulatedContent.Parts = append(accumulatedContent.Parts, response.Content.Parts...)
-			}
-		}
-
-		// Send streaming event
-		select {
-		case eventChan <- event:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		// Check if this is the final response
-		if response.Partial == nil || !*response.Partial {
-			finalEvent = event
-			break
-		}
-	}
-
-	// Execute after-model callback
-	if a.callbacks.AfterModelCallback != nil {
-		if err := a.callbacks.AfterModelCallback(ctx, invocationCtx, []*core.Event{finalEvent}); err != nil {
-			return fmt.Errorf("after-model callback failed: %w", err)
-		}
-	}
-
-	// Process any function calls in the final response
-	if finalEvent != nil {
-		functionCalls := finalEvent.GetFunctionCalls()
-		if len(functionCalls) > 0 {
-			// Execute tools
-			toolResponses, err := a.executeToolCalls(ctx, invocationCtx, functionCalls, eventChan)
-			if err != nil {
-				return fmt.Errorf("tool execution failed: %w", err)
-			}
-
-			// Create tool response event
-			responseEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			responseEvent.Content = &core.Content{
-				Role:  "agent",
-				Parts: toolResponses,
-			}
-
-			select {
-			case eventChan <- responseEvent:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-
-			// Add events to session
-			invocationCtx.Session.AddEvent(finalEvent)
-			invocationCtx.Session.AddEvent(responseEvent)
-
-			// Continue conversation to get final response after tool execution
-			return a.executeStreamingConversationFlow(ctx, invocationCtx, eventChan)
-		}
-
-		// Add final event to session
-		invocationCtx.Session.AddEvent(finalEvent)
-	}
-
-	return nil
 }

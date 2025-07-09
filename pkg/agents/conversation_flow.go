@@ -9,7 +9,7 @@ import (
 
 // ConversationFlowManager handles the conversation flow execution logic
 type ConversationFlowManager struct {
-	agent          *EnhancedLlmAgent
+	agent          *LLMAgent
 	maxTurns       int
 	maxToolCalls   int
 	loopDetector   *LoopDetector
@@ -17,7 +17,7 @@ type ConversationFlowManager struct {
 }
 
 // NewConversationFlowManager creates a new conversation flow manager
-func NewConversationFlowManager(agent *EnhancedLlmAgent, invocationCtx *core.InvocationContext) *ConversationFlowManager {
+func NewConversationFlowManager(agent *LLMAgent, invocationCtx *core.InvocationContext) *ConversationFlowManager {
 	maxTurns := 10 // Default max turns to prevent infinite loops
 	if invocationCtx.RunConfig != nil && invocationCtx.RunConfig.MaxTurns != nil {
 		maxTurns = *invocationCtx.RunConfig.MaxTurns

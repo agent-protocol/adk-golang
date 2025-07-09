@@ -95,7 +95,7 @@ func TestEnhancedLlmAgent_SmartLLMBehavior(t *testing.T) {
 		MaxToolCalls:  5,
 		RetryAttempts: 1,
 	}
-	agent := NewEnhancedLlmAgent("search-agent", "Search agent", config)
+	agent := NewLLMAgent("search-agent", "Search agent", config)
 
 	// Use the smart mock that behaves like a real LLM
 	smartMockLLM := NewSmartMockLLMConnection()

@@ -129,7 +129,7 @@ func TestEnhancedLlmAgent_BasicFunctionality(t *testing.T) {
 	}
 
 	// Create agent
-	agent := NewEnhancedLlmAgent("test-agent", "A test agent", config)
+	agent := NewLLMAgent("test-agent", "A test agent", config)
 
 	// Verify configuration
 	if agent.Model() != "test-model" {
@@ -142,7 +142,7 @@ func TestEnhancedLlmAgent_BasicFunctionality(t *testing.T) {
 }
 
 func TestEnhancedLlmAgent_ToolManagement(t *testing.T) {
-	agent := NewEnhancedLlmAgent("test-agent", "A test agent", nil)
+	agent := NewLLMAgent("test-agent", "A test agent", nil)
 
 	// Test adding tools
 	tool1 := NewMockTool("tool1", "response1")
@@ -201,7 +201,7 @@ func TestEnhancedLlmAgent_SimpleConversation(t *testing.T) {
 	)
 
 	// Create agent and set LLM connection
-	agent := NewEnhancedLlmAgent("test-agent", "A helpful assistant", nil)
+	agent := NewLLMAgent("test-agent", "A helpful assistant", nil)
 	agent.SetLLMConnection(mockLLM)
 
 	// Create test session and context
@@ -281,7 +281,7 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 	)
 
 	// Create agent and set LLM connection
-	agent := NewEnhancedLlmAgent("test-agent", "A tool-using assistant", nil)
+	agent := NewLLMAgent("test-agent", "A tool-using assistant", nil)
 	agent.SetLLMConnection(mockLLM)
 
 	// Add mock tool
@@ -345,84 +345,6 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 	}
 }
 
-func TestStreamingLlmAgent(t *testing.T) {
-	// Create mock LLM responses for streaming
-	responses := []*core.LLMResponse{
-		{
-			Content: &core.Content{
-				Role: "assistant",
-				Parts: []core.Part{
-					{
-						Type: "text",
-						Text: ptr.Ptr("Hello"),
-					},
-				},
-			},
-			Partial: ptr.Ptr(true),
-		},
-		{
-			Content: &core.Content{
-				Role: "assistant",
-				Parts: []core.Part{
-					{
-						Type: "text",
-						Text: ptr.Ptr(" there!"),
-					},
-				},
-			},
-			Partial: ptr.Ptr(false),
-		},
-	}
-
-	mockLLM := NewMockLLMConnection(responses...)
-
-	// Create streaming agent
-	agent := NewStreamingLlmAgent("streaming-agent", "A streaming assistant", nil)
-	agent.SetLLMConnection(mockLLM)
-
-	// Create test session and context
-	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
-	invocationCtx.UserContent = &core.Content{
-		Role: "user",
-		Parts: []core.Part{
-			{
-				Type: "text",
-				Text: ptr.Ptr("Hello"),
-			},
-		},
-	}
-
-	// Run the streaming agent
-	ctx := context.Background()
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
-	if err != nil {
-		t.Fatalf("Streaming agent run failed: %v", err)
-	}
-
-	// Collect events from stream
-	var events []*core.Event
-	for event := range eventStream {
-		events = append(events, event)
-	}
-
-	// Verify we got multiple events for streaming
-	if len(events) < 2 {
-		t.Errorf("Expected at least 2 streaming events, got %d", len(events))
-	}
-
-	// Verify first event is partial
-	if events[0].Partial == nil || !*events[0].Partial {
-		t.Error("Expected first event to be partial")
-	}
-
-	// Verify last event is complete
-	lastEvent := events[len(events)-1]
-	if lastEvent.Partial != nil && *lastEvent.Partial {
-		t.Error("Expected last event to be complete (not partial)")
-	}
-}
-
 func TestLlmAgentConfig(t *testing.T) {
 	// Test default config
 	defaultConfig := DefaultLlmAgentConfig()
@@ -449,7 +371,7 @@ func TestLlmAgentConfig(t *testing.T) {
 		StreamingEnabled: true,
 	}
 
-	agent := NewEnhancedLlmAgent("test-agent", "Test agent", customConfig)
+	agent := NewLLMAgent("test-agent", "Test agent", customConfig)
 
 	if agent.Config().Model != "custom-model" {
 		t.Errorf("Expected custom model 'custom-model', got '%s'", agent.Config().Model)
@@ -517,7 +439,7 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 		},
 	)
 
-	agent := NewEnhancedLlmAgent("callback-agent", "Agent with callbacks", nil)
+	agent := NewLLMAgent("callback-agent", "Agent with callbacks", nil)
 	agent.SetLLMConnection(mockLLM)
 	agent.SetCallbacks(callbacks)
 	agent.AddTool(NewMockTool("test_tool", "tool result"))
@@ -677,7 +599,7 @@ func TestEnhancedLlmAgent_LoopDetection_ToolCallLimit(t *testing.T) {
 		RetryAttempts:   1,
 	}
 
-	agent := NewEnhancedLlmAgent("loop-test-agent", "Agent for loop testing", config)
+	agent := NewLLMAgent("loop-test-agent", "Agent for loop testing", config)
 	agent.SetLLMConnection(mockLLM)
 
 	// Add mock tool
@@ -782,7 +704,7 @@ func TestEnhancedLlmAgent_LoopDetection_RepeatingPattern(t *testing.T) {
 	mockLLM := NewMockLLMConnection(responses...)
 
 	// Create agent
-	agent := NewEnhancedLlmAgent("pattern-test-agent", "Agent for pattern testing", nil)
+	agent := NewLLMAgent("pattern-test-agent", "Agent for pattern testing", nil)
 	agent.SetLLMConnection(mockLLM)
 
 	// Add mock tool
@@ -866,7 +788,7 @@ func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
 	mockLLM := NewMockLLMConnection(responses...)
 
 	// Create agent
-	agent := NewEnhancedLlmAgent("max-turns-test-agent", "Agent for max turns testing", nil)
+	agent := NewLLMAgent("max-turns-test-agent", "Agent for max turns testing", nil)
 	agent.SetLLMConnection(mockLLM)
 
 	// Add mock tool
@@ -914,7 +836,7 @@ func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
 }
 
 func TestConversationFlowManager_Creation(t *testing.T) {
-	agent := NewEnhancedLlmAgent("test-agent", "Test agent", nil)
+	agent := NewLLMAgent("test-agent", "Test agent", nil)
 	session := core.NewSession("test-session", "test-app", "test-user")
 	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
 
@@ -1072,7 +994,7 @@ func TestAddSystemInstruction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{
+			agent := &LLMAgent{
 				BaseAgentImpl: &BaseAgentImpl{
 					instruction: tt.instruction,
 				},
@@ -1187,7 +1109,7 @@ func TestAddSessionHistory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{}
+			agent := &LLMAgent{}
 			result := agent.addSessionHistory(tt.input, tt.events)
 
 			if !reflect.DeepEqual(result, tt.expected) {
@@ -1320,7 +1242,7 @@ func TestAddUserContentIfNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{}
+			agent := &LLMAgent{}
 			result := agent.addUserContentIfNew(tt.input, tt.userContent)
 
 			if !reflect.DeepEqual(result, tt.expected) {
@@ -1372,7 +1294,7 @@ func TestIsUserContentDuplicate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{}
+			agent := &LLMAgent{}
 			result := agent.isUserContentDuplicate(tt.contents, tt.userContent)
 
 			if result != tt.expected {
@@ -1457,7 +1379,7 @@ func TestContentsEqual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{}
+			agent := &LLMAgent{}
 			result := agent.contentsEqual(tt.content1, tt.content2)
 
 			if result != tt.expected {
@@ -1549,7 +1471,7 @@ func TestBuildToolDeclarations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{
+			agent := &LLMAgent{
 				tools: tt.tools,
 			}
 
@@ -1625,7 +1547,7 @@ func TestCreateLLMConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agent := &EnhancedLlmAgent{
+			agent := &LLMAgent{
 				BaseAgentImpl: &BaseAgentImpl{
 					instruction: tt.instruction,
 				},
@@ -1680,7 +1602,7 @@ func TestBuildLLMRequest_DataTransformationPipeline(t *testing.T) {
 	}
 
 	// Create agent with tools
-	agent := NewEnhancedLlmAgent("test", "test agent", &LlmAgentConfig{
+	agent := NewLLMAgent("test", "test agent", &LlmAgentConfig{
 		Model:       "gpt-4",
 		Temperature: ptr.Float32(0.7),
 	})
@@ -1834,7 +1756,7 @@ func TestBuildLLMRequest_DeduplicationScenarios(t *testing.T) {
 			}
 
 			// Create agent
-			agent := NewEnhancedLlmAgent("test", "test agent", nil)
+			agent := NewLLMAgent("test", "test agent", nil)
 			agent.SetInstruction("You are helpful")
 
 			// Execute

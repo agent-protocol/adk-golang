@@ -20,7 +20,7 @@ func TestEnhancedLlmAgent_ConversationDuplication(t *testing.T) {
 		MaxToolCalls:  5, // Higher limit to allow the pattern to emerge
 		RetryAttempts: 1,
 	}
-	agent := NewEnhancedLlmAgent("search-agent", "Search agent", config)
+	agent := NewLLMAgent("search-agent", "Search agent", config)
 
 	// This test simulates the exact behavior seen in the logs:
 	// The LLM keeps calling the same tool with the same arguments
