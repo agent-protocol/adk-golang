@@ -53,13 +53,13 @@ func (t *BaseToolImpl) GetDeclaration() *core.FunctionDeclaration {
 
 // RunAsync executes the tool with the given arguments and context.
 // Base implementation returns an error - concrete tools must override this.
-func (t *BaseToolImpl) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (t *BaseToolImpl) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	return nil, fmt.Errorf("tool %s does not implement RunAsync", t.name)
 }
 
 // ProcessLLMRequest allows the tool to modify LLM requests.
 // Base implementation does nothing - tools can override as needed.
-func (t *BaseToolImpl) ProcessLLMRequest(ctx context.Context, toolCtx *core.ToolContext, request *core.LLMRequest) error {
+func (t *BaseToolImpl) ProcessLLMRequest(toolCtx *core.ToolContext, request *core.LLMRequest) error {
 	// If the tool has a declaration, add it to the request
 	if decl := t.GetDeclaration(); decl != nil {
 		if request.Config == nil {
@@ -122,7 +122,7 @@ func (t *FunctionTool) GetDeclaration() *core.FunctionDeclaration {
 }
 
 // RunAsync executes the wrapped function with the given arguments.
-func (t *FunctionTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (t *FunctionTool) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	fnValue := reflect.ValueOf(t.function)
 	fnType := fnValue.Type()
 
@@ -134,12 +134,6 @@ func (t *FunctionTool) RunAsync(ctx context.Context, args map[string]any, toolCt
 	argIndex := 0 // Track non-context arguments
 	for i := 0; i < fnType.NumIn(); i++ {
 		paramType := fnType.In(i)
-
-		// Special handling for context.Context
-		if paramType == reflect.TypeOf((*context.Context)(nil)).Elem() {
-			callArgs[i] = reflect.ValueOf(ctx)
-			continue
-		}
 
 		// Special handling for ToolContext
 		if paramType == reflect.TypeOf((*core.ToolContext)(nil)) {
@@ -224,20 +218,14 @@ func (t *AgentTool) GetDeclaration() *core.FunctionDeclaration {
 }
 
 // RunAsync executes the wrapped agent with the given request.
-func (t *AgentTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (t *AgentTool) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	request, ok := args["request"].(string)
 	if !ok {
 		return nil, fmt.Errorf("request parameter must be a string")
 	}
 
 	// Create a new invocation context for the agent
-	agentCtx := core.NewInvocationContext(
-		ctx,
-		toolCtx.InvocationContext.InvocationID,
-		t.agent,
-		toolCtx.InvocationContext.Session,
-		toolCtx.InvocationContext.SessionService,
-	)
+	agentCtx := toolCtx.InvocationContext
 
 	// Set the user content
 	agentCtx.UserContent = &core.Content{
@@ -251,7 +239,7 @@ func (t *AgentTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *
 	}
 
 	// Run the agent
-	eventStream, err := t.agent.RunAsync(agentCtx)
+	eventStream, err := t.agent.RunAsync(toolCtx.InvocationContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run agent %s: %w", t.agent.Name(), err)
 	}

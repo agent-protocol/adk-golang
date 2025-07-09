@@ -2,7 +2,6 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -85,7 +84,7 @@ func (t *DuckDuckGoSearchTool) GetDeclaration() *core.FunctionDeclaration {
 }
 
 // RunAsync executes the search
-func (t *DuckDuckGoSearchTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (t *DuckDuckGoSearchTool) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	log.Println("Starting RunAsync for DuckDuckGoSearchTool...")
 	// Extract query from args
 	queryInterface, ok := args["query"]
@@ -107,7 +106,7 @@ func (t *DuckDuckGoSearchTool) RunAsync(ctx context.Context, args map[string]any
 
 	log.Printf("Performing search for query: %s", query)
 	// Perform search
-	results, err := t.search(ctx, query)
+	results, err := t.search(toolCtx, query)
 	if err != nil {
 		log.Printf("Search failed: %v", err)
 		return nil, fmt.Errorf("search failed: %w", err)
@@ -118,9 +117,9 @@ func (t *DuckDuckGoSearchTool) RunAsync(ctx context.Context, args map[string]any
 }
 
 // search performs the actual web search using DuckDuckGo search results
-func (t *DuckDuckGoSearchTool) search(ctx context.Context, query string) (*SearchResult, error) {
+func (t *DuckDuckGoSearchTool) search(toolCtx *core.ToolContext, query string) (*SearchResult, error) {
 	// First try DuckDuckGo Instant Answer API for direct answers
-	instantResult, err := t.searchInstantAnswer(ctx, query)
+	instantResult, err := t.searchInstantAnswer(toolCtx, query)
 	if err == nil && len(instantResult.Results) > 0 {
 		// Check if we got a meaningful result (not just the fallback message)
 		if len(instantResult.Results) == 1 &&
@@ -133,11 +132,11 @@ func (t *DuckDuckGoSearchTool) search(ctx context.Context, query string) (*Searc
 	}
 
 	// If instant answer didn't work, try web search
-	return t.searchWeb(ctx, query)
+	return t.searchWeb(toolCtx, query)
 }
 
 // searchInstantAnswer uses the DuckDuckGo Instant Answer API for direct answers
-func (t *DuckDuckGoSearchTool) searchInstantAnswer(ctx context.Context, query string) (*SearchResult, error) {
+func (t *DuckDuckGoSearchTool) searchInstantAnswer(toolCtx *core.ToolContext, query string) (*SearchResult, error) {
 	baseURL := "https://api.duckduckgo.com/"
 	params := url.Values{}
 	params.Add("q", query)
@@ -147,7 +146,7 @@ func (t *DuckDuckGoSearchTool) searchInstantAnswer(ctx context.Context, query st
 
 	reqURL := baseURL + "?" + params.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(toolCtx.InvocationContext, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -237,7 +236,7 @@ func (t *DuckDuckGoSearchTool) searchInstantAnswer(ctx context.Context, query st
 }
 
 // searchWeb performs web search by scraping DuckDuckGo search results
-func (t *DuckDuckGoSearchTool) searchWeb(ctx context.Context, query string) (*SearchResult, error) {
+func (t *DuckDuckGoSearchTool) searchWeb(toolCtx *core.ToolContext, query string) (*SearchResult, error) {
 	// Use DuckDuckGo Lite version which is simpler to parse
 	baseURL := "https://lite.duckduckgo.com/lite/"
 	params := url.Values{}
@@ -246,7 +245,7 @@ func (t *DuckDuckGoSearchTool) searchWeb(ctx context.Context, query string) (*Se
 
 	reqURL := baseURL + "?" + params.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(toolCtx.InvocationContext, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -297,7 +296,7 @@ func (t *DuckDuckGoSearchTool) searchWeb(ctx context.Context, query string) (*Se
 }
 
 // ProcessLLMRequest is not needed for local tools
-func (t *DuckDuckGoSearchTool) ProcessLLMRequest(ctx context.Context, toolCtx *core.ToolContext, request *core.LLMRequest) error {
+func (t *DuckDuckGoSearchTool) ProcessLLMRequest(toolCtx *core.ToolContext, request *core.LLMRequest) error {
 	// This tool doesn't need to modify the LLM request
 	return nil
 }
