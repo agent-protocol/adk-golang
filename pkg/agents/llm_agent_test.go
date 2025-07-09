@@ -995,7 +995,7 @@ func TestAddSystemInstruction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent := &LLMAgent{
-				BaseAgentImpl: &BaseAgentImpl{
+				CustomAgent: &CustomAgent{
 					instruction: tt.instruction,
 				},
 			}
@@ -1548,7 +1548,7 @@ func TestCreateLLMConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent := &LLMAgent{
-				BaseAgentImpl: &BaseAgentImpl{
+				CustomAgent: &CustomAgent{
 					instruction: tt.instruction,
 				},
 				config: tt.agentConfig,

@@ -95,7 +95,7 @@ func (AgentCardFile) isAgentCardSource() {}
 
 // RemoteA2aAgent represents an agent that communicates with a remote A2A agent
 type RemoteA2aAgent struct {
-	*BaseAgentImpl
+	*CustomAgent
 
 	// Configuration
 	config *RemoteA2aAgentConfig
@@ -127,7 +127,7 @@ func NewRemoteA2aAgent(name string, agentCardSource AgentCardSource, config *Rem
 	}
 
 	return &RemoteA2aAgent{
-		BaseAgentImpl:   NewBaseAgent(name, ""),
+		CustomAgent:     NewBaseAgent(name, ""),
 		config:          config,
 		agentCardSource: agentCardSource,
 		isResolved:      false,
@@ -192,7 +192,7 @@ func (r *RemoteA2aAgent) ensureResolved(ctx context.Context) error {
 
 	// Update description if empty
 	if r.Description() == "" && r.agentCard.Description != nil {
-		r.BaseAgentImpl.description = *r.agentCard.Description
+		r.CustomAgent.description = *r.agentCard.Description
 	}
 
 	// Initialize A2A client

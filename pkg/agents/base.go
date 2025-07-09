@@ -9,9 +9,9 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
-// BaseAgentImpl provides a basic implementation of the BaseAgent interface.
+// CustomAgent provides a basic implementation of the BaseAgent interface.
 // This can be embedded in concrete agent types.
-type BaseAgentImpl struct {
+type CustomAgent struct {
 	name                string
 	description         string
 	instruction         string
@@ -22,8 +22,8 @@ type BaseAgentImpl struct {
 }
 
 // NewBaseAgent creates a new base agent implementation.
-func NewBaseAgent(name, description string) *BaseAgentImpl {
-	return &BaseAgentImpl{
+func NewBaseAgent(name, description string) *CustomAgent {
+	return &CustomAgent{
 		name:        name,
 		description: description,
 		subAgents:   make([]core.BaseAgent, 0),
@@ -31,68 +31,68 @@ func NewBaseAgent(name, description string) *BaseAgentImpl {
 }
 
 // Name returns the agent's unique identifier.
-func (a *BaseAgentImpl) Name() string {
+func (a *CustomAgent) Name() string {
 	return a.name
 }
 
 // Description returns a description of the agent's purpose.
-func (a *BaseAgentImpl) Description() string {
+func (a *CustomAgent) Description() string {
 	return a.description
 }
 
 // Instruction returns optional system instructions for the agent.
-func (a *BaseAgentImpl) Instruction() string {
+func (a *CustomAgent) Instruction() string {
 	return a.instruction
 }
 
 // SetInstruction sets the system instructions for the agent.
-func (a *BaseAgentImpl) SetInstruction(instruction string) {
+func (a *CustomAgent) SetInstruction(instruction string) {
 	a.instruction = instruction
 }
 
 // SubAgents returns the list of child agents in the hierarchy.
-func (a *BaseAgentImpl) SubAgents() []core.BaseAgent {
+func (a *CustomAgent) SubAgents() []core.BaseAgent {
 	return a.subAgents
 }
 
 // AddSubAgent adds a child agent to this agent.
-func (a *BaseAgentImpl) AddSubAgent(subAgent core.BaseAgent) {
+func (a *CustomAgent) AddSubAgent(subAgent core.BaseAgent) {
 	subAgent.SetParentAgent(a)
 	a.subAgents = append(a.subAgents, subAgent)
 }
 
 // ParentAgent returns the parent agent, if any.
-func (a *BaseAgentImpl) ParentAgent() core.BaseAgent {
+func (a *CustomAgent) ParentAgent() core.BaseAgent {
 	return a.parentAgent
 }
 
 // SetParentAgent sets the parent agent.
-func (a *BaseAgentImpl) SetParentAgent(parent core.BaseAgent) {
+func (a *CustomAgent) SetParentAgent(parent core.BaseAgent) {
 	a.parentAgent = parent
 }
 
 // GetBeforeAgentCallback returns the before-agent callback.
-func (a *BaseAgentImpl) GetBeforeAgentCallback() core.BeforeAgentCallback {
+func (a *CustomAgent) GetBeforeAgentCallback() core.BeforeAgentCallback {
 	return a.beforeAgentCallback
 }
 
 // SetBeforeAgentCallback sets the before-agent callback.
-func (a *BaseAgentImpl) SetBeforeAgentCallback(callback core.BeforeAgentCallback) {
+func (a *CustomAgent) SetBeforeAgentCallback(callback core.BeforeAgentCallback) {
 	a.beforeAgentCallback = callback
 }
 
 // GetAfterAgentCallback returns the after-agent callback.
-func (a *BaseAgentImpl) GetAfterAgentCallback() core.AfterAgentCallback {
+func (a *CustomAgent) GetAfterAgentCallback() core.AfterAgentCallback {
 	return a.afterAgentCallback
 }
 
 // SetAfterAgentCallback sets the after-agent callback.
-func (a *BaseAgentImpl) SetAfterAgentCallback(callback core.AfterAgentCallback) {
+func (a *CustomAgent) SetAfterAgentCallback(callback core.AfterAgentCallback) {
 	a.afterAgentCallback = callback
 }
 
 // FindAgent searches for an agent by name in the hierarchy.
-func (a *BaseAgentImpl) FindAgent(name string) core.BaseAgent {
+func (a *CustomAgent) FindAgent(name string) core.BaseAgent {
 	if a.name == name {
 		return a
 	}
@@ -108,7 +108,7 @@ func (a *BaseAgentImpl) FindAgent(name string) core.BaseAgent {
 }
 
 // FindSubAgent searches for a direct sub-agent by name.
-func (a *BaseAgentImpl) FindSubAgent(name string) core.BaseAgent {
+func (a *CustomAgent) FindSubAgent(name string) core.BaseAgent {
 	for _, subAgent := range a.subAgents {
 		if subAgent.Name() == name {
 			return subAgent
@@ -119,7 +119,7 @@ func (a *BaseAgentImpl) FindSubAgent(name string) core.BaseAgent {
 
 // RunAsync executes the agent with the given context and returns an event stream.
 // This is a base implementation that should be overridden by concrete agents.
-func (a *BaseAgentImpl) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (a *CustomAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	// Execute before-agent callback if present
 	if a.beforeAgentCallback != nil {
 		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
@@ -156,7 +156,7 @@ func (a *BaseAgentImpl) RunAsync(ctx context.Context, invocationCtx *core.Invoca
 }
 
 // Run is a synchronous wrapper around RunAsync that collects all events.
-func (a *BaseAgentImpl) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+func (a *CustomAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
 	stream, err := a.RunAsync(ctx, invocationCtx)
 	if err != nil {
 		return nil, err
@@ -178,7 +178,7 @@ func (a *BaseAgentImpl) Run(ctx context.Context, invocationCtx *core.InvocationC
 }
 
 // Cleanup performs any necessary cleanup operations.
-func (a *BaseAgentImpl) Cleanup(ctx context.Context) error {
+func (a *CustomAgent) Cleanup(ctx context.Context) error {
 	// Cleanup sub-agents
 	for _, subAgent := range a.subAgents {
 		if err := subAgent.Cleanup(ctx); err != nil {

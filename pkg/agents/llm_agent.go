@@ -97,7 +97,7 @@ type LlmAgentCallbacks struct {
 
 // LLMAgent is an enhanced implementation of an LLM-based agent with comprehensive tool execution.
 type LLMAgent struct {
-	*BaseAgentImpl
+	*CustomAgent
 	config        *LlmAgentConfig
 	tools         []core.BaseTool
 	toolMap       map[string]core.BaseTool
@@ -112,11 +112,11 @@ func NewLLMAgent(name, description string, config *LlmAgentConfig) *LLMAgent {
 	}
 
 	agent := &LLMAgent{
-		BaseAgentImpl: NewBaseAgent(name, description),
-		config:        config,
-		tools:         make([]core.BaseTool, 0),
-		toolMap:       make(map[string]core.BaseTool),
-		callbacks:     &LlmAgentCallbacks{},
+		CustomAgent: NewBaseAgent(name, description),
+		config:      config,
+		tools:       make([]core.BaseTool, 0),
+		toolMap:     make(map[string]core.BaseTool),
+		callbacks:   &LlmAgentCallbacks{},
 	}
 
 	// Set system instruction if provided in config
