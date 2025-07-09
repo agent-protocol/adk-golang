@@ -9,7 +9,7 @@ git clone https://github.com/agent-protocol/adk-golang.git
 cd adk-golang
 go run ./cmd/adk web examples
 ```
-Open the browser and test.
+Open the browser, select one of the demo app and check it.
 
 ## Overview
 
@@ -24,12 +24,13 @@ The goal is to be compatible with the other ADK ecosystem by using A2A protocol.
 
 ### Core Components
 - **Agents**:
-  - [ ] `CustomAgent`
-  - [ ] `LLMAgent`
+  - [x] `CustomAgent`
+  - [x] `LLMAgent`
   - [ ] `RemoteA2aAgent`
-  - [ ] `SequentialAgent`
+  - [x] `SequentialAgent`
   - [ ] `ConcurrentAgent`
 - **Tools**:
+  - [x] `FunctionTool`
   - [ ] `AgentTool`
   - [ ] `MCPTool`
 - **Runner**: Orchestrates agent execution with real-time event streaming
