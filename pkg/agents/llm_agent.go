@@ -267,6 +267,18 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 			return err
 		}
 
+		// Clear user content after first turn to prevent re-adding it to LLM requests
+		if turn == 0 && invocationCtx.UserContent != nil {
+			// Add user content to session as first event if not already present
+			if len(invocationCtx.Session.Events) == 0 || invocationCtx.Session.Events[0].Content == nil || invocationCtx.Session.Events[0].Content.Role != "user" {
+				userEvent := core.NewEvent(invocationCtx.InvocationID, "user")
+				userEvent.Content = invocationCtx.UserContent
+				invocationCtx.Session.AddEvent(userEvent)
+			}
+			// Clear it so it won't be added again in subsequent turns
+			invocationCtx.UserContent = nil
+		}
+
 		if !shouldContinue {
 			// Final response - publish and exit
 			if err := flowManager.eventPublisher.PublishEvent(ctx, eventChan, event); err != nil {
@@ -279,6 +291,11 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 		// Check for loop conditions
 		functionCalls := event.GetFunctionCalls()
 		if err := a.checkLoopConditions(ctx, invocationCtx, eventChan, flowManager, functionCalls, turn); err != nil {
+			// Check if this is a graceful completion
+			if _, isComplete := err.(ErrConversationComplete); isComplete {
+				log.Printf("Conversation completed gracefully: %v", err)
+				break // Exit gracefully without returning error
+			}
 			return err
 		}
 
@@ -363,6 +380,15 @@ func (a *EnhancedLlmAgent) processLLMTurn(ctx context.Context, invocationCtx *co
 	return event, true, nil
 }
 
+// ErrConversationComplete is a special error that indicates the conversation has completed gracefully
+type ErrConversationComplete struct {
+	Reason string
+}
+
+func (e ErrConversationComplete) Error() string {
+	return e.Reason
+}
+
 // checkLoopConditions checks various loop conditions and handles them
 func (a *EnhancedLlmAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, flowManager *ConversationFlowManager, functionCalls []*core.FunctionCall, turn int) error {
 	// Check total tool calls limit to prevent infinite loops
@@ -379,7 +405,8 @@ func (a *EnhancedLlmAgent) checkLoopConditions(ctx context.Context, invocationCt
 			return err
 		}
 		invocationCtx.Session.AddEvent(finalEvent)
-		return fmt.Errorf("conversation ended due to tool call limit")
+		// Return special error to indicate graceful completion
+		return ErrConversationComplete{Reason: "conversation ended due to tool call limit"}
 	}
 
 	// Check per-turn tool calls limit
@@ -642,7 +669,7 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 		}
 	}
 
-	// Add current user message if present
+	// Add current user message if present (this should only happen on first turn)
 	if invocationCtx.UserContent != nil {
 		contents = append(contents, *invocationCtx.UserContent)
 	}
@@ -668,6 +695,28 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 	}
 
 	log.Printf("LLM Config: %+v", llmConfig)
+
+	// Debug: Log the conversation contents being sent to LLM
+	log.Printf("LLM Request Contents (%d items):", len(contents))
+	for i, content := range contents {
+		log.Printf("  [%d] Role: %s, Parts: %d", i, content.Role, len(content.Parts))
+		for j, part := range content.Parts {
+			switch part.Type {
+			case "text":
+				if part.Text != nil {
+					log.Printf("    Part[%d]: text='%s'", j, *part.Text)
+				}
+			case "function_call":
+				if part.FunctionCall != nil {
+					log.Printf("    Part[%d]: function_call=%s(%v)", j, part.FunctionCall.Name, part.FunctionCall.Args)
+				}
+			case "function_response":
+				if part.FunctionResponse != nil {
+					log.Printf("    Part[%d]: function_response=%s -> %+v", j, part.FunctionResponse.Name, part.FunctionResponse.Response)
+				}
+			}
+		}
+	}
 
 	return &core.LLMRequest{
 		Contents: contents,
