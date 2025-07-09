@@ -327,14 +327,27 @@ func (w *WebUIHandler) HandleIndex(writer http.ResponseWriter, req *http.Request
                                     throw new Error(data.error);
                                 }
                                 
-                                // Handle agent response
+                                // Handle turn completion
+                                if (data.turn_complete) {
+                                    continue;
+                                }
+                                
+                                // Handle agent response - look for any content from non-user authors
                                 if (data.author && data.author !== 'user' && data.content) {
                                     const text = extractTextFromContent(data.content);
                                     if (text) {
                                         if (!agentMessageDiv) {
                                             agentMessageDiv = addMessage('agent', '');
                                         }
-                                        agentMessageDiv.textContent += text;
+                                        
+                                        // For function calls and responses, create separate messages
+                                        if (data.content.parts && data.content.parts.some(p => p.type === 'function_call' || p.type === 'function_response')) {
+                                            addMessage('agent', text);
+                                            agentMessageDiv = null; // Reset for next message
+                                        } else {
+                                            // For regular text, append to existing message
+                                            agentMessageDiv.textContent += text;
+                                        }
                                     }
                                 }
                             } catch (e) {
@@ -359,6 +372,7 @@ func (w *WebUIHandler) HandleIndex(writer http.ResponseWriter, req *http.Request
         function extractTextFromContent(content) {
             if (content.parts) {
                 for (const part of content.parts) {
+                    // Handle regular text parts
                     if (part.text) {
                         // Filter out malformed JSON fragments and empty text
                         const text = part.text.trim();
@@ -374,6 +388,31 @@ func (w *WebUIHandler) HandleIndex(writer http.ResponseWriter, req *http.Request
                         }
                         
                         return text;
+                    }
+                    
+                    // Handle function calls
+                    if (part.type === 'function_call' && part.function_call) {
+                        const func = part.function_call;
+                        return '🔧 Calling function: ' + func.name + '(' + JSON.stringify(func.args) + ')';
+                    }
+                    
+                    // Handle function responses
+                    if (part.type === 'function_response' && part.function_response) {
+                        const func = part.function_response;
+                        if (func.name === 'duckduckgo_search' && func.response && func.response.result) {
+                            const results = func.response.result.results || [];
+                            if (results.length > 0) {
+                                let text = '📊 Search results for "' + func.response.result.query + '":\n\n';
+                                results.slice(0, 5).forEach((result, index) => {
+                                    text += (index + 1) + '. **' + result.title + '**\n';
+                                    text += '   ' + result.snippet + '\n';
+                                    text += '   🔗 ' + result.url + '\n\n';
+                                });
+                                return text;
+                            }
+                        }
+                        // Generic function response fallback
+                        return '✅ Function ' + func.name + ' completed: ' + JSON.stringify(func.response).slice(0, 200) + '...';
                     }
                 }
             }
