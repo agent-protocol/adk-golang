@@ -281,10 +281,13 @@ func (a *EnhancedLlmAgent) executeConversationFlow(ctx context.Context, invocati
 
 		if !shouldContinue {
 			// Final response - publish and exit
+			log.Printf("Publishing final response event: %s", formatContent(event.Content))
 			if err := flowManager.eventPublisher.PublishEvent(ctx, eventChan, event); err != nil {
+				log.Printf("Failed to publish final event: %v", err)
 				return err
 			}
 			invocationCtx.Session.AddEvent(event)
+			log.Println("Final response published and added to session. Exiting conversation flow.")
 			break
 		}
 
@@ -371,12 +374,15 @@ func (a *EnhancedLlmAgent) processLLMTurn(ctx context.Context, invocationCtx *co
 
 	// Check for function calls
 	functionCalls := event.GetFunctionCalls()
+	log.Printf("Found %d function calls in LLM response", len(functionCalls))
 	if len(functionCalls) == 0 {
 		// No tool calls - this is a final response
+		log.Println("No function calls found - marking as final response")
 		event.TurnComplete = ptr.Ptr(true)
 		return event, false, nil
 	}
 
+	log.Println("Function calls found - continuing conversation flow")
 	return event, true, nil
 }
 
@@ -643,39 +649,129 @@ func (a *EnhancedLlmAgent) isRetryableError(err error) bool {
 	return false
 }
 
-// buildLLMRequest constructs an LLM request from the session context.
+// buildLLMRequest constructs an LLM request from the session context using functional programming style.
 func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext) (*core.LLMRequest, error) {
 	log.Println("Building LLM request...")
+
+	// Step 1: Start with empty contents and build step by step
 	contents := make([]core.Content, 0)
 
-	// Add system instruction if present
-	if a.instruction != "" {
-		contents = append(contents, core.Content{
-			Role: "system",
-			Parts: []core.Part{
-				{
-					Type: "text",
-					Text: &a.instruction,
-				},
-			},
-		})
-		log.Printf("Added system instruction: %s", a.instruction)
+	// Step 2: Add system instruction (if present)
+	contents = a.addSystemInstruction(contents)
+
+	// Step 3: Add session history (excluding system messages)
+	contents = a.addSessionHistory(contents, invocationCtx.Session.Events)
+
+	// Step 4: Add current user content (with deduplication)
+	contents = a.addUserContentIfNew(contents, invocationCtx.UserContent)
+
+	// Step 5: Build tool declarations
+	tools := a.buildToolDeclarations()
+
+	// Step 6: Create LLM configuration
+	llmConfig := a.createLLMConfig(tools)
+
+	// Step 7: Log final contents for debugging
+	a.logRequestContents(contents)
+
+	return &core.LLMRequest{
+		Contents: contents,
+		Config:   llmConfig,
+		Tools:    tools,
+	}, nil
+}
+
+// addSystemInstruction adds system instruction to contents if present.
+func (a *EnhancedLlmAgent) addSystemInstruction(contents []core.Content) []core.Content {
+	if a.instruction == "" {
+		return contents
 	}
 
-	// Add session history (excluding system messages from history)
-	for _, event := range invocationCtx.Session.Events {
+	systemContent := core.Content{
+		Role: "system",
+		Parts: []core.Part{
+			{
+				Type: "text",
+				Text: &a.instruction,
+			},
+		},
+	}
+
+	log.Printf("Added system instruction: %s", a.instruction)
+	return append(contents, systemContent)
+}
+
+// addSessionHistory adds session events to contents, excluding system messages.
+func (a *EnhancedLlmAgent) addSessionHistory(contents []core.Content, events []*core.Event) []core.Content {
+	for _, event := range events {
 		if event.Content != nil && event.Content.Role != "system" {
 			contents = append(contents, *event.Content)
 		}
 	}
+	log.Printf("Added %d session events to contents", len(events))
+	return contents
+}
 
-	// Add current user message if present (this should only happen on first turn)
-	if invocationCtx.UserContent != nil {
-		contents = append(contents, *invocationCtx.UserContent)
+// addUserContentIfNew adds user content only if it's not already in the session.
+func (a *EnhancedLlmAgent) addUserContentIfNew(contents []core.Content, userContent *core.Content) []core.Content {
+	if userContent == nil {
+		return contents
 	}
 
-	// Build tool declarations
+	// Check if user content already exists in contents
+	if a.isUserContentDuplicate(contents, userContent) {
+		log.Println("User content already exists in session - skipping duplicate")
+		return contents
+	}
+
+	log.Printf("Adding new user content: %s", formatContent(userContent))
+	return append(contents, *userContent)
+}
+
+// isUserContentDuplicate checks if the user content is already present in contents.
+func (a *EnhancedLlmAgent) isUserContentDuplicate(contents []core.Content, userContent *core.Content) bool {
+	if len(contents) == 0 {
+		return false
+	}
+
+	// Check the last content item to see if it matches the user content
+	lastContent := contents[len(contents)-1]
+	if lastContent.Role != "user" {
+		return false
+	}
+
+	return a.contentsEqual(&lastContent, userContent)
+}
+
+// contentsEqual compares two Content objects for equality.
+func (a *EnhancedLlmAgent) contentsEqual(content1, content2 *core.Content) bool {
+	if content1.Role != content2.Role {
+		return false
+	}
+
+	if len(content1.Parts) != len(content2.Parts) {
+		return false
+	}
+
+	// For simplicity, check only the first text part
+	// This covers the most common case of simple text messages
+	if len(content1.Parts) > 0 && len(content2.Parts) > 0 {
+		part1 := content1.Parts[0]
+		part2 := content2.Parts[0]
+
+		if part1.Type == "text" && part2.Type == "text" &&
+			part1.Text != nil && part2.Text != nil {
+			return *part1.Text == *part2.Text
+		}
+	}
+
+	return false
+}
+
+// buildToolDeclarations creates tool declarations from available tools.
+func (a *EnhancedLlmAgent) buildToolDeclarations() []*core.FunctionDeclaration {
 	var tools []*core.FunctionDeclaration
+
 	for _, tool := range a.tools {
 		if decl := tool.GetDeclaration(); decl != nil {
 			tools = append(tools, decl)
@@ -683,8 +779,13 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 		}
 	}
 
-	// Build LLM config
-	llmConfig := &core.LLMConfig{
+	log.Printf("Built %d tool declarations", len(tools))
+	return tools
+}
+
+// createLLMConfig creates the LLM configuration object.
+func (a *EnhancedLlmAgent) createLLMConfig(tools []*core.FunctionDeclaration) *core.LLMConfig {
+	config := &core.LLMConfig{
 		Model:             a.config.Model,
 		Temperature:       a.config.Temperature,
 		MaxTokens:         a.config.MaxTokens,
@@ -694,9 +795,12 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 		SystemInstruction: &a.instruction,
 	}
 
-	log.Printf("LLM Config: %+v", llmConfig)
+	log.Printf("Created LLM config: Model=%s, Tools=%d", config.Model, len(tools))
+	return config
+}
 
-	// Debug: Log the conversation contents being sent to LLM
+// logRequestContents logs the final conversation contents for debugging.
+func (a *EnhancedLlmAgent) logRequestContents(contents []core.Content) {
 	log.Printf("LLM Request Contents (%d items):", len(contents))
 	for i, content := range contents {
 		log.Printf("  [%d] Role: %s, Parts: %d", i, content.Role, len(content.Parts))
@@ -717,12 +821,6 @@ func (a *EnhancedLlmAgent) buildLLMRequest(invocationCtx *core.InvocationContext
 			}
 		}
 	}
-
-	return &core.LLMRequest{
-		Contents: contents,
-		Config:   llmConfig,
-		Tools:    tools,
-	}, nil
 }
 
 // Run is a synchronous wrapper around RunAsync.

@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1001,4 +1002,886 @@ func TestEventPublisher_CreateFinalResponse(t *testing.T) {
 	if event.TurnComplete == nil || !*event.TurnComplete {
 		t.Error("Expected turn to be complete")
 	}
+}
+
+// ========================================
+// Data Transformation Unit Tests
+// ========================================
+// These tests demonstrate how each functional programming step transforms data
+
+// TestAddSystemInstruction demonstrates how system instruction is added to contents
+func TestAddSystemInstruction(t *testing.T) {
+	tests := []struct {
+		name        string
+		instruction string
+		input       []core.Content
+		expected    []core.Content
+	}{
+		{
+			name:        "Empty instruction - no change",
+			instruction: "",
+			input:       []core.Content{},
+			expected:    []core.Content{},
+		},
+		{
+			name:        "Add system instruction to empty contents",
+			instruction: "You are a helpful assistant",
+			input:       []core.Content{},
+			expected: []core.Content{
+				{
+					Role: "system",
+					Parts: []core.Part{
+						{
+							Type: "text",
+							Text: ptr.Ptr("You are a helpful assistant"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name:        "Add system instruction to existing contents",
+			instruction: "You are a helpful assistant",
+			input: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+				{
+					Role: "system",
+					Parts: []core.Part{
+						{
+							Type: "text",
+							Text: ptr.Ptr("You are a helpful assistant"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{
+				BaseAgentImpl: &BaseAgentImpl{
+					instruction: tt.instruction,
+				},
+			}
+
+			result := agent.addSystemInstruction(tt.input)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("addSystemInstruction() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestAddSessionHistory demonstrates how session events are transformed into contents
+func TestAddSessionHistory(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []core.Content
+		events   []*core.Event
+		expected []core.Content
+	}{
+		{
+			name:     "Empty events - no change",
+			input:    []core.Content{},
+			events:   []*core.Event{},
+			expected: []core.Content{},
+		},
+		{
+			name:  "Add user and agent events, exclude system",
+			input: []core.Content{},
+			events: []*core.Event{
+				{
+					Content: &core.Content{
+						Role: "user",
+						Parts: []core.Part{
+							{Type: "text", Text: ptr.Ptr("Hello")},
+						},
+					},
+				},
+				{
+					Content: &core.Content{
+						Role: "system",
+						Parts: []core.Part{
+							{Type: "text", Text: ptr.Ptr("System message")},
+						},
+					},
+				},
+				{
+					Content: &core.Content{
+						Role: "agent",
+						Parts: []core.Part{
+							{Type: "text", Text: ptr.Ptr("Hi there!")},
+						},
+					},
+				},
+				{
+					Content: nil, // Should be skipped
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+				{
+					Role: "agent",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hi there!")},
+					},
+				},
+			},
+		},
+		{
+			name: "Add to existing contents",
+			input: []core.Content{
+				{
+					Role: "system",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("System instruction")},
+					},
+				},
+			},
+			events: []*core.Event{
+				{
+					Content: &core.Content{
+						Role: "user",
+						Parts: []core.Part{
+							{Type: "text", Text: ptr.Ptr("What's the weather?")},
+						},
+					},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "system",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("System instruction")},
+					},
+				},
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("What's the weather?")},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{}
+			result := agent.addSessionHistory(tt.input, tt.events)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("addSessionHistory() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestAddUserContentIfNew demonstrates deduplication logic for user content
+func TestAddUserContentIfNew(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []core.Content
+		userContent *core.Content
+		expected    []core.Content
+	}{
+		{
+			name:        "Nil user content - no change",
+			input:       []core.Content{},
+			userContent: nil,
+			expected:    []core.Content{},
+		},
+		{
+			name:  "Add new user content to empty contents",
+			input: []core.Content{},
+			userContent: &core.Content{
+				Role: "user",
+				Parts: []core.Part{
+					{Type: "text", Text: ptr.Ptr("Hello")},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+		},
+		{
+			name: "Skip duplicate user content",
+			input: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role: "user",
+				Parts: []core.Part{
+					{Type: "text", Text: ptr.Ptr("Hello")},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+		},
+		{
+			name: "Add different user content",
+			input: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role: "user",
+				Parts: []core.Part{
+					{Type: "text", Text: ptr.Ptr("Goodbye")},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Goodbye")},
+					},
+				},
+			},
+		},
+		{
+			name: "Add user content when last is agent content",
+			input: []core.Content{
+				{
+					Role: "agent",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hi there!")},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role: "user",
+				Parts: []core.Part{
+					{Type: "text", Text: ptr.Ptr("Hello")},
+				},
+			},
+			expected: []core.Content{
+				{
+					Role: "agent",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hi there!")},
+					},
+				},
+				{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Hello")},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{}
+			result := agent.addUserContentIfNew(tt.input, tt.userContent)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("addUserContentIfNew() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIsUserContentDuplicate demonstrates duplicate detection logic
+func TestIsUserContentDuplicate(t *testing.T) {
+	tests := []struct {
+		name        string
+		contents    []core.Content
+		userContent *core.Content
+		expected    bool
+	}{
+		{
+			name:        "Empty contents - not duplicate",
+			contents:    []core.Content{},
+			userContent: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}},
+			expected:    false,
+		},
+		{
+			name: "Last content is not user - not duplicate",
+			contents: []core.Content{
+				{Role: "agent", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hi")}}},
+			},
+			userContent: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}},
+			expected:    false,
+		},
+		{
+			name: "Same text content - is duplicate",
+			contents: []core.Content{
+				{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}},
+			},
+			userContent: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}},
+			expected:    true,
+		},
+		{
+			name: "Different text content - not duplicate",
+			contents: []core.Content{
+				{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}},
+			},
+			userContent: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Goodbye")}}},
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{}
+			result := agent.isUserContentDuplicate(tt.contents, tt.userContent)
+
+			if result != tt.expected {
+				t.Errorf("isUserContentDuplicate() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestContentsEqual demonstrates content equality comparison
+func TestContentsEqual(t *testing.T) {
+	tests := []struct {
+		name     string
+		content1 *core.Content
+		content2 *core.Content
+		expected bool
+	}{
+		{
+			name: "Same text content - equal",
+			content1: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			content2: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			expected: true,
+		},
+		{
+			name: "Different roles - not equal",
+			content1: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			content2: &core.Content{
+				Role:  "agent",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			expected: false,
+		},
+		{
+			name: "Different text - not equal",
+			content1: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			content2: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Goodbye")}},
+			},
+			expected: false,
+		},
+		{
+			name: "Different number of parts - not equal",
+			content1: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			content2: &core.Content{
+				Role: "user",
+				Parts: []core.Part{
+					{Type: "text", Text: ptr.Ptr("Hello")},
+					{Type: "text", Text: ptr.Ptr("World")},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Non-text parts - not equal",
+			content1: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "function_call"}},
+			},
+			content2: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "function_call"}},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{}
+			result := agent.contentsEqual(tt.content1, tt.content2)
+
+			if result != tt.expected {
+				t.Errorf("contentsEqual() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestBuildToolDeclarations demonstrates tool declaration creation
+func TestBuildToolDeclarations(t *testing.T) {
+	// Mock tool implementation for testing
+	mockTool1 := &MockToolWithDeclaration{
+		name: "search",
+		declaration: &core.FunctionDeclaration{
+			Name:        "search",
+			Description: "Search the web",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query",
+					},
+				},
+			},
+		},
+	}
+
+	mockTool2 := &MockToolWithDeclaration{
+		name:        "calculate",
+		declaration: nil, // Tool without declaration
+	}
+
+	tests := []struct {
+		name     string
+		tools    []core.BaseTool
+		expected []*core.FunctionDeclaration
+	}{
+		{
+			name:     "No tools - empty declarations",
+			tools:    []core.BaseTool{},
+			expected: []*core.FunctionDeclaration{},
+		},
+		{
+			name:  "One tool with declaration",
+			tools: []core.BaseTool{mockTool1},
+			expected: []*core.FunctionDeclaration{
+				{
+					Name:        "search",
+					Description: "Search the web",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"query": map[string]interface{}{
+								"type":        "string",
+								"description": "Search query",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "Tool without declaration - excluded",
+			tools:    []core.BaseTool{mockTool2},
+			expected: []*core.FunctionDeclaration{},
+		},
+		{
+			name:  "Mixed tools - only valid declarations",
+			tools: []core.BaseTool{mockTool1, mockTool2},
+			expected: []*core.FunctionDeclaration{
+				{
+					Name:        "search",
+					Description: "Search the web",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"query": map[string]interface{}{
+								"type":        "string",
+								"description": "Search query",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{
+				tools: tt.tools,
+			}
+
+			result := agent.buildToolDeclarations()
+
+			// Handle the nil/empty slice comparison issue
+			if len(result) == 0 && len(tt.expected) == 0 {
+				return // Both are empty, test passes
+			}
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("buildToolDeclarations() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCreateLLMConfig demonstrates LLM configuration creation
+func TestCreateLLMConfig(t *testing.T) {
+	tools := []*core.FunctionDeclaration{
+		{
+			Name:        "search",
+			Description: "Search the web",
+		},
+	}
+
+	tests := []struct {
+		name        string
+		agentConfig *LlmAgentConfig
+		instruction string
+		tools       []*core.FunctionDeclaration
+		expected    *core.LLMConfig
+	}{
+		{
+			name: "Complete configuration",
+			agentConfig: &LlmAgentConfig{
+				Model:       "gpt-4",
+				Temperature: ptr.Float32(0.7),
+				MaxTokens:   ptr.Ptr(1000),
+				TopP:        ptr.Float32(0.9),
+				TopK:        ptr.Ptr(50),
+			},
+			instruction: "You are helpful",
+			tools:       tools,
+			expected: &core.LLMConfig{
+				Model:             "gpt-4",
+				Temperature:       ptr.Float32(0.7),
+				MaxTokens:         ptr.Ptr(1000),
+				TopP:              ptr.Float32(0.9),
+				TopK:              ptr.Ptr(50),
+				Tools:             tools,
+				SystemInstruction: ptr.Ptr("You are helpful"),
+			},
+		},
+		{
+			name: "Minimal configuration",
+			agentConfig: &LlmAgentConfig{
+				Model: "gpt-3.5-turbo",
+			},
+			instruction: "",
+			tools:       []*core.FunctionDeclaration{},
+			expected: &core.LLMConfig{
+				Model:             "gpt-3.5-turbo",
+				Temperature:       nil,
+				MaxTokens:         nil,
+				TopP:              nil,
+				TopK:              nil,
+				Tools:             []*core.FunctionDeclaration{},
+				SystemInstruction: ptr.Ptr(""),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &EnhancedLlmAgent{
+				BaseAgentImpl: &BaseAgentImpl{
+					instruction: tt.instruction,
+				},
+				config: tt.agentConfig,
+			}
+
+			result := agent.createLLMConfig(tt.tools)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("createLLMConfig() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestBuildLLMRequest demonstrates the complete data transformation pipeline
+func TestBuildLLMRequest_DataTransformationPipeline(t *testing.T) {
+	// Create a mock session with events
+	session := &core.Session{
+		Events: []*core.Event{
+			{
+				Content: &core.Content{
+					Role: "user",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Previous message")},
+					},
+				},
+			},
+			{
+				Content: &core.Content{
+					Role: "agent",
+					Parts: []core.Part{
+						{Type: "text", Text: ptr.Ptr("Previous response")},
+					},
+				},
+			},
+		},
+	}
+
+	// Create user content
+	userContent := &core.Content{
+		Role: "user",
+		Parts: []core.Part{
+			{Type: "text", Text: ptr.Ptr("New message")},
+		},
+	}
+
+	// Create invocation context
+	invocationCtx := &core.InvocationContext{
+		Session:     session,
+		UserContent: userContent,
+	}
+
+	// Create agent with tools
+	agent := NewEnhancedLlmAgent("test", "test agent", &LlmAgentConfig{
+		Model:       "gpt-4",
+		Temperature: ptr.Float32(0.7),
+	})
+	agent.SetInstruction("You are a helpful assistant")
+
+	// Add a mock tool
+	mockTool := &MockToolWithDeclaration{
+		name: "search",
+		declaration: &core.FunctionDeclaration{
+			Name:        "search",
+			Description: "Search the web",
+		},
+	}
+	agent.AddTool(mockTool)
+
+	// Execute the function
+	result, err := agent.buildLLMRequest(invocationCtx)
+
+	// Verify the result
+	if err != nil {
+		t.Fatalf("buildLLMRequest() returned error: %v", err)
+	}
+
+	// Check that all steps were applied correctly
+	expectedContents := []core.Content{
+		// System instruction
+		{
+			Role: "system",
+			Parts: []core.Part{
+				{Type: "text", Text: ptr.Ptr("You are a helpful assistant")},
+			},
+		},
+		// Session history
+		{
+			Role: "user",
+			Parts: []core.Part{
+				{Type: "text", Text: ptr.Ptr("Previous message")},
+			},
+		},
+		{
+			Role: "agent",
+			Parts: []core.Part{
+				{Type: "text", Text: ptr.Ptr("Previous response")},
+			},
+		},
+		// New user content
+		{
+			Role: "user",
+			Parts: []core.Part{
+				{Type: "text", Text: ptr.Ptr("New message")},
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(result.Contents, expectedContents) {
+		t.Errorf("buildLLMRequest() contents = %v, want %v", result.Contents, expectedContents)
+	}
+
+	// Check config
+	if result.Config.Model != "gpt-4" {
+		t.Errorf("buildLLMRequest() config model = %v, want %v", result.Config.Model, "gpt-4")
+	}
+
+	// Check tools
+	if len(result.Tools) != 1 || result.Tools[0].Name != "search" {
+		t.Errorf("buildLLMRequest() tools = %v, want one tool named 'search'", result.Tools)
+	}
+}
+
+// TestBuildLLMRequest_DeduplicationScenarios demonstrates various deduplication scenarios
+func TestBuildLLMRequest_DeduplicationScenarios(t *testing.T) {
+	tests := []struct {
+		name            string
+		sessionEvents   []*core.Event
+		userContent     *core.Content
+		expectedContent int // Expected number of content items
+		description     string
+	}{
+		{
+			name:          "Empty session, new user content",
+			sessionEvents: []*core.Event{},
+			userContent: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			expectedContent: 2, // system + user
+			description:     "Should add user content to empty session",
+		},
+		{
+			name: "User content already in session - should deduplicate",
+			sessionEvents: []*core.Event{
+				{
+					Content: &core.Content{
+						Role:  "user",
+						Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			expectedContent: 2, // system + existing user (no duplicate)
+			description:     "Should skip duplicate user content",
+		},
+		{
+			name: "Different user content - should add both",
+			sessionEvents: []*core.Event{
+				{
+					Content: &core.Content{
+						Role:  "user",
+						Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Goodbye")}},
+			},
+			expectedContent: 3, // system + old user + new user
+			description:     "Should add different user content",
+		},
+		{
+			name: "Last event is agent response - should add user content",
+			sessionEvents: []*core.Event{
+				{
+					Content: &core.Content{
+						Role:  "agent",
+						Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hi there!")}},
+					},
+				},
+			},
+			userContent: &core.Content{
+				Role:  "user",
+				Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}},
+			},
+			expectedContent: 3, // system + agent + user
+			description:     "Should add user content when last event is agent response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create session with test events
+			session := &core.Session{Events: tt.sessionEvents}
+
+			// Create invocation context
+			invocationCtx := &core.InvocationContext{
+				Session:     session,
+				UserContent: tt.userContent,
+			}
+
+			// Create agent
+			agent := NewEnhancedLlmAgent("test", "test agent", nil)
+			agent.SetInstruction("You are helpful")
+
+			// Execute
+			result, err := agent.buildLLMRequest(invocationCtx)
+			if err != nil {
+				t.Fatalf("buildLLMRequest() failed: %v", err)
+			}
+
+			// Verify expected content count
+			if len(result.Contents) != tt.expectedContent {
+				t.Errorf("%s: expected %d content items, got %d", tt.description, tt.expectedContent, len(result.Contents))
+			}
+
+			// Verify system instruction is always first
+			if len(result.Contents) > 0 && result.Contents[0].Role != "system" {
+				t.Errorf("%s: expected first content to be system instruction", tt.description)
+			}
+		})
+	}
+}
+
+// MockToolWithDeclaration is a tool mock that supports custom declarations
+type MockToolWithDeclaration struct {
+	name        string
+	declaration *core.FunctionDeclaration
+}
+
+func (m *MockToolWithDeclaration) Name() string {
+	return m.name
+}
+
+func (m *MockToolWithDeclaration) Description() string {
+	return "Mock tool with custom declaration"
+}
+
+func (m *MockToolWithDeclaration) IsLongRunning() bool {
+	return false
+}
+
+func (m *MockToolWithDeclaration) GetDeclaration() *core.FunctionDeclaration {
+	return m.declaration
+}
+
+func (m *MockToolWithDeclaration) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+	return "mock result", nil
+}
+
+func (m *MockToolWithDeclaration) ProcessLLMRequest(ctx context.Context, toolCtx *core.ToolContext, request *core.LLMRequest) error {
+	return nil
 }
