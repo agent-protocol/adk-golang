@@ -1,3 +1,4 @@
+# WARNING: still under development
 # ADK for Go
 
 Agent Development Kit (ADK) is a framework for building AI agents, and we're implementing ADK with Go. This project provides Go interfaces and implementations that mirror the Python ADK's architecture while following Go idioms and best practices.
@@ -18,9 +19,9 @@ ADK consists of two main parts:
 - **ADK implementation**: The core framework for building agents. See [ADK documentation](https://google.github.io/adk-docs/)
   - [Python API](https://google.github.io/adk-docs/api-reference/python/)
   - [Java API](https://google.github.io/adk-docs/api-reference/java/)
-  - **Go API** (this project)
 
 The goal is to be compatible with the other ADK ecosystem by using A2A protocol.
+The ADK API maybe somewhat different with Python and Java implementation, I mean... this is Golang, why do you need `ParallelAgent` since `ConcurrentAgent` is far superior :joy: 
 
 ### Core Components
 - **Agents**:
