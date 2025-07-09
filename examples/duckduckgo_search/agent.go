@@ -9,6 +9,7 @@ import (
 
 	"github.com/agent-protocol/adk-golang/pkg/agents"
 	"github.com/agent-protocol/adk-golang/pkg/core"
+	"github.com/agent-protocol/adk-golang/pkg/llmconnect/ollama"
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 	"github.com/agent-protocol/adk-golang/pkg/tools"
 )

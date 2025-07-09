@@ -2,6 +2,8 @@ package agents
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -551,5 +553,452 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 	}
 	if !afterToolCalled {
 		t.Error("Expected after-tool callback to be called")
+	}
+}
+
+// Test loop detection functionality
+func TestLoopDetector_CheckToolCallLimit(t *testing.T) {
+	detector := NewLoopDetector()
+
+	// Test normal case - under limit
+	functionCalls := []*core.FunctionCall{
+		{ID: "1", Name: "test_tool", Args: map[string]any{}},
+		{ID: "2", Name: "test_tool", Args: map[string]any{}},
+	}
+
+	exceeded := detector.CheckToolCallLimit(functionCalls, 10)
+	if exceeded {
+		t.Error("Expected tool call limit not to be exceeded")
+	}
+
+	if detector.totalToolCalls != 2 {
+		t.Errorf("Expected total tool calls to be 2, got %d", detector.totalToolCalls)
+	}
+
+	// Test exceeding limit
+	moreCalls := []*core.FunctionCall{
+		{ID: "3", Name: "test_tool", Args: map[string]any{}},
+		{ID: "4", Name: "test_tool", Args: map[string]any{}},
+		{ID: "5", Name: "test_tool", Args: map[string]any{}},
+		{ID: "6", Name: "test_tool", Args: map[string]any{}},
+		{ID: "7", Name: "test_tool", Args: map[string]any{}},
+		{ID: "8", Name: "test_tool", Args: map[string]any{}},
+		{ID: "9", Name: "test_tool", Args: map[string]any{}},
+		{ID: "10", Name: "test_tool", Args: map[string]any{}},
+		{ID: "11", Name: "test_tool", Args: map[string]any{}},
+	}
+
+	exceeded = detector.CheckToolCallLimit(moreCalls, 10)
+	if !exceeded {
+		t.Error("Expected tool call limit to be exceeded")
+	}
+
+	if detector.totalToolCalls != 11 {
+		t.Errorf("Expected total tool calls to be 11, got %d", detector.totalToolCalls)
+	}
+}
+
+func TestLoopDetector_CheckRepeatingPattern(t *testing.T) {
+	detector := NewLoopDetector()
+
+	// Test case 1: Not enough events
+	events := []*core.Event{
+		{Content: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hi")}}}},
+	}
+
+	isRepeating := detector.CheckRepeatingPattern(events, 1)
+	if isRepeating {
+		t.Error("Expected no repeating pattern with insufficient events")
+	}
+
+	// Test case 2: Different functions - no pattern
+	events = []*core.Event{
+		{Content: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "function_call", FunctionCall: &core.FunctionCall{ID: "1", Name: "tool1", Args: map[string]any{}}}}}},
+		{Content: &core.Content{Role: "agent", Parts: []core.Part{{Type: "function_response", FunctionResponse: &core.FunctionResponse{ID: "1", Name: "tool1", Response: map[string]any{"result": "response1"}}}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "function_call", FunctionCall: &core.FunctionCall{ID: "2", Name: "tool2", Args: map[string]any{}}}}}},
+		{Content: &core.Content{Role: "agent", Parts: []core.Part{{Type: "function_response", FunctionResponse: &core.FunctionResponse{ID: "2", Name: "tool2", Response: map[string]any{"result": "response2"}}}}}},
+	}
+
+	isRepeating = detector.CheckRepeatingPattern(events, 3)
+	if isRepeating {
+		t.Error("Expected no repeating pattern with different functions")
+	}
+
+	// Test case 3: Same function called 3 times consecutively - should detect pattern
+	events = []*core.Event{
+		{Content: &core.Content{Role: "user", Parts: []core.Part{{Type: "text", Text: ptr.Ptr("Hello")}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "function_call", FunctionCall: &core.FunctionCall{ID: "1", Name: "same_tool", Args: map[string]any{}}}}}},
+		{Content: &core.Content{Role: "agent", Parts: []core.Part{{Type: "function_response", FunctionResponse: &core.FunctionResponse{ID: "1", Name: "same_tool", Response: map[string]any{"result": "response1"}}}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "function_call", FunctionCall: &core.FunctionCall{ID: "2", Name: "same_tool", Args: map[string]any{}}}}}},
+		{Content: &core.Content{Role: "agent", Parts: []core.Part{{Type: "function_response", FunctionResponse: &core.FunctionResponse{ID: "2", Name: "same_tool", Response: map[string]any{"result": "response2"}}}}}},
+		{Content: &core.Content{Role: "assistant", Parts: []core.Part{{Type: "function_call", FunctionCall: &core.FunctionCall{ID: "3", Name: "same_tool", Args: map[string]any{}}}}}},
+		{Content: &core.Content{Role: "agent", Parts: []core.Part{{Type: "function_response", FunctionResponse: &core.FunctionResponse{ID: "3", Name: "same_tool", Response: map[string]any{"result": "response3"}}}}}},
+	}
+
+	isRepeating = detector.CheckRepeatingPattern(events, 5)
+	if !isRepeating {
+		t.Error("Expected repeating pattern to be detected with same function called 3 times")
+	}
+}
+
+func TestEnhancedLlmAgent_LoopDetection_ToolCallLimit(t *testing.T) {
+	// Create mock LLM that always returns function calls
+	var responses []*core.LLMResponse
+
+	// Create 15 responses with function calls to exceed the limit
+	for i := 0; i < 15; i++ {
+		responses = append(responses, &core.LLMResponse{
+			Content: &core.Content{
+				Role: "assistant",
+				Parts: []core.Part{
+					{
+						Type: "function_call",
+						FunctionCall: &core.FunctionCall{
+							ID:   fmt.Sprintf("call_%d", i),
+							Name: "test_tool",
+							Args: map[string]any{"input": fmt.Sprintf("test%d", i)},
+						},
+					},
+				},
+			},
+		})
+	}
+
+	mockLLM := NewMockLLMConnection(responses...)
+
+	// Create agent with low tool call limit
+	config := &LlmAgentConfig{
+		Model:           "test-model",
+		MaxToolCalls:    10, // This will be multiplied by 2 for total limit
+		ToolCallTimeout: 10 * time.Second,
+		RetryAttempts:   1,
+	}
+
+	agent := NewEnhancedLlmAgent("loop-test-agent", "Agent for loop testing", config)
+	agent.SetLLMConnection(mockLLM)
+
+	// Add mock tool
+	mockTool := NewMockTool("test_tool", "tool result")
+	agent.AddTool(mockTool)
+
+	// Create test session and context
+	session := core.NewSession("test-session", "test-app", "test-user")
+	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx.UserContent = &core.Content{
+		Role: "user",
+		Parts: []core.Part{
+			{
+				Type: "text",
+				Text: ptr.Ptr("Keep using the tool"),
+			},
+		},
+	}
+
+	// Run the agent
+	ctx := context.Background()
+	events, err := agent.Run(ctx, invocationCtx)
+	if err != nil {
+		t.Fatalf("Agent run failed: %v", err)
+	}
+
+	// Should have terminated due to tool call limit OR repeating pattern (both are valid loop detection)
+	foundToolLimit := false
+	foundRepeatingPattern := false
+	for _, event := range events {
+		if event.Content != nil && len(event.Content.Parts) > 0 {
+			for _, part := range event.Content.Parts {
+				if part.Type == "text" && part.Text != nil {
+					text := *part.Text
+					if strings.Contains(text, "maximum number of tool calls") {
+						foundToolLimit = true
+					}
+					if strings.Contains(text, "completed the tool execution") {
+						foundRepeatingPattern = true
+					}
+				}
+			}
+		}
+	}
+
+	if !foundToolLimit && !foundRepeatingPattern {
+		t.Error("Expected conversation to end with either tool call limit message or repeating pattern detection")
+	}
+
+	// Verify tool was called multiple times but not excessively
+	if mockTool.callCount == 0 {
+		t.Error("Expected tool to be called at least once")
+	}
+
+	if mockTool.callCount > 25 { // Should be limited by our logic
+		t.Errorf("Tool was called too many times: %d", mockTool.callCount)
+	}
+}
+
+func TestEnhancedLlmAgent_LoopDetection_RepeatingPattern(t *testing.T) {
+	// Create mock LLM that returns the same function call multiple times
+	var responses []*core.LLMResponse
+
+	// Create responses that will trigger repeating pattern detection
+	for i := 0; i < 10; i++ {
+		responses = append(responses,
+			// Function call response
+			&core.LLMResponse{
+				Content: &core.Content{
+					Role: "assistant",
+					Parts: []core.Part{
+						{
+							Type: "function_call",
+							FunctionCall: &core.FunctionCall{
+								ID:   fmt.Sprintf("call_%d", i),
+								Name: "repeating_tool", // Same tool name
+								Args: map[string]any{"input": "same input"},
+							},
+						},
+					},
+				},
+			},
+			// Follow-up response after tool execution
+			&core.LLMResponse{
+				Content: &core.Content{
+					Role: "assistant",
+					Parts: []core.Part{
+						{
+							Type: "function_call",
+							FunctionCall: &core.FunctionCall{
+								ID:   fmt.Sprintf("call_%d_followup", i),
+								Name: "repeating_tool", // Same tool again
+								Args: map[string]any{"input": "same input again"},
+							},
+						},
+					},
+				},
+			},
+		)
+	}
+
+	mockLLM := NewMockLLMConnection(responses...)
+
+	// Create agent
+	agent := NewEnhancedLlmAgent("pattern-test-agent", "Agent for pattern testing", nil)
+	agent.SetLLMConnection(mockLLM)
+
+	// Add mock tool
+	mockTool := NewMockTool("repeating_tool", "same result")
+	agent.AddTool(mockTool)
+
+	// Create test session and context
+	session := core.NewSession("test-session", "test-app", "test-user")
+	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx.UserContent = &core.Content{
+		Role: "user",
+		Parts: []core.Part{
+			{
+				Type: "text",
+				Text: ptr.Ptr("Use the repeating tool"),
+			},
+		},
+	}
+
+	// Run the agent
+	ctx := context.Background()
+	events, err := agent.Run(ctx, invocationCtx)
+	if err != nil {
+		t.Fatalf("Agent run failed: %v", err)
+	}
+
+	// Should have terminated due to repeating pattern
+	found := false
+	for _, event := range events {
+		if event.Content != nil && len(event.Content.Parts) > 0 {
+			for _, part := range event.Content.Parts {
+				if part.Type == "text" && part.Text != nil {
+					text := *part.Text
+					if strings.Contains(text, "completed the tool execution") {
+						found = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("Expected conversation to end with repeating pattern detection message")
+	}
+
+	// Verify tool was called but conversation was terminated
+	if mockTool.callCount == 0 {
+		t.Error("Expected tool to be called at least once")
+	}
+
+	// Should not have been called too many times due to pattern detection
+	if mockTool.callCount > 10 {
+		t.Errorf("Tool was called too many times despite pattern detection: %d", mockTool.callCount)
+	}
+}
+
+func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
+	// Create mock LLM that always returns function calls
+	var responses []*core.LLMResponse
+
+	// Create many responses to exceed max turns
+	for i := 0; i < 20; i++ {
+		responses = append(responses, &core.LLMResponse{
+			Content: &core.Content{
+				Role: "assistant",
+				Parts: []core.Part{
+					{
+						Type: "function_call",
+						FunctionCall: &core.FunctionCall{
+							ID:   fmt.Sprintf("call_%d", i),
+							Name: "slow_tool",
+							Args: map[string]any{"input": fmt.Sprintf("test%d", i)},
+						},
+					},
+				},
+			},
+		})
+	}
+
+	mockLLM := NewMockLLMConnection(responses...)
+
+	// Create agent
+	agent := NewEnhancedLlmAgent("max-turns-test-agent", "Agent for max turns testing", nil)
+	agent.SetLLMConnection(mockLLM)
+
+	// Add mock tool
+	mockTool := NewMockTool("slow_tool", "slow result")
+	agent.AddTool(mockTool)
+
+	// Create test session and context with limited max turns
+	session := core.NewSession("test-session", "test-app", "test-user")
+	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx.RunConfig = &core.RunConfig{
+		MaxTurns: ptr.Ptr(5), // Low limit to test termination
+	}
+	invocationCtx.UserContent = &core.Content{
+		Role: "user",
+		Parts: []core.Part{
+			{
+				Type: "text",
+				Text: ptr.Ptr("Keep using the tool"),
+			},
+		},
+	}
+
+	// Run the agent
+	ctx := context.Background()
+	events, err := agent.Run(ctx, invocationCtx)
+	if err != nil {
+		t.Fatalf("Agent run failed: %v", err)
+	}
+
+	// Should have terminated due to max turns
+	// The conversation should have ended within the turn limit
+	if len(events) == 0 {
+		t.Error("Expected at least some events")
+	}
+
+	// Verify tool was called but not excessively
+	if mockTool.callCount == 0 {
+		t.Error("Expected tool to be called at least once")
+	}
+
+	// Should be limited by max turns
+	if mockTool.callCount > 10 { // Should be much less due to turn limit
+		t.Errorf("Tool was called too many times: %d", mockTool.callCount)
+	}
+}
+
+func TestConversationFlowManager_Creation(t *testing.T) {
+	agent := NewEnhancedLlmAgent("test-agent", "Test agent", nil)
+	session := core.NewSession("test-session", "test-app", "test-user")
+	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+
+	// Test default max turns
+	flowManager := NewConversationFlowManager(agent, invocationCtx)
+	if flowManager.maxTurns != 10 {
+		t.Errorf("Expected default max turns to be 10, got %d", flowManager.maxTurns)
+	}
+
+	// Test custom max turns
+	invocationCtx.RunConfig = &core.RunConfig{
+		MaxTurns: ptr.Ptr(15),
+	}
+	flowManager = NewConversationFlowManager(agent, invocationCtx)
+	if flowManager.maxTurns != 15 {
+		t.Errorf("Expected custom max turns to be 15, got %d", flowManager.maxTurns)
+	}
+
+	// Test max tool calls calculation
+	expectedMaxToolCalls := agent.config.MaxToolCalls * 2
+	if flowManager.maxToolCalls != expectedMaxToolCalls {
+		t.Errorf("Expected max tool calls to be %d, got %d", expectedMaxToolCalls, flowManager.maxToolCalls)
+	}
+}
+
+func TestEventPublisher_PublishEvent(t *testing.T) {
+	publisher := NewEventPublisher()
+	eventChan := make(chan *core.Event, 1)
+
+	event := &core.Event{
+		ID:     "test-event",
+		Author: "test-agent",
+	}
+
+	ctx := context.Background()
+	err := publisher.PublishEvent(ctx, eventChan, event)
+	if err != nil {
+		t.Fatalf("Expected no error publishing event, got: %v", err)
+	}
+
+	// Verify event was published
+	select {
+	case receivedEvent := <-eventChan:
+		if receivedEvent.ID != "test-event" {
+			t.Errorf("Expected event ID 'test-event', got '%s'", receivedEvent.ID)
+		}
+	default:
+		t.Error("Expected event to be published to channel")
+	}
+}
+
+func TestEventPublisher_CreateFinalResponse(t *testing.T) {
+	publisher := NewEventPublisher()
+
+	event := publisher.CreateFinalResponse("test-invocation", "test-agent", "Final message")
+
+	if event.InvocationID != "test-invocation" {
+		t.Errorf("Expected invocation ID 'test-invocation', got '%s'", event.InvocationID)
+	}
+
+	if event.Author != "test-agent" {
+		t.Errorf("Expected agent name 'test-agent', got '%s'", event.Author)
+	}
+
+	if event.Content == nil {
+		t.Error("Expected event to have content")
+	}
+
+	if event.Content.Role != "assistant" {
+		t.Errorf("Expected role 'assistant', got '%s'", event.Content.Role)
+	}
+
+	if len(event.Content.Parts) != 1 {
+		t.Errorf("Expected 1 content part, got %d", len(event.Content.Parts))
+	}
+
+	if event.Content.Parts[0].Type != "text" {
+		t.Errorf("Expected text part, got '%s'", event.Content.Parts[0].Type)
+	}
+
+	if event.Content.Parts[0].Text == nil || *event.Content.Parts[0].Text != "Final message" {
+		t.Errorf("Expected text 'Final message', got %v", event.Content.Parts[0].Text)
+	}
+
+	if event.TurnComplete == nil || !*event.TurnComplete {
+		t.Error("Expected turn to be complete")
 	}
 }
