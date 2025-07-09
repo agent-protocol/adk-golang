@@ -4,6 +4,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
@@ -19,6 +20,7 @@ type CustomAgent struct {
 	parentAgent         core.BaseAgent
 	beforeAgentCallback core.BeforeAgentCallback
 	afterAgentCallback  core.AfterAgentCallback
+	execute             func(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error
 }
 
 // NewBaseAgent creates a new base agent implementation.
@@ -119,10 +121,10 @@ func (a *CustomAgent) FindSubAgent(name string) core.BaseAgent {
 
 // RunAsync executes the agent with the given context and returns an event stream.
 // This is a base implementation that should be overridden by concrete agents.
-func (a *CustomAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (a *CustomAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	// Execute before-agent callback if present
 	if a.beforeAgentCallback != nil {
-		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
+		if err := a.beforeAgentCallback(invocationCtx); err != nil {
 			return nil, fmt.Errorf("before-agent callback failed: %w", err)
 		}
 	}
@@ -133,21 +135,21 @@ func (a *CustomAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocati
 	go func() {
 		defer close(eventChan)
 
-		// Create a simple response event
-		event := core.NewEvent(invocationCtx.InvocationID, a.name)
-		event.Content = &core.Content{
-			Role: "agent",
-			Parts: []core.Part{
-				{
-					Type: "text",
-					Text: ptr.Ptr("Hello from " + a.name),
-				},
-			},
+		errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
+
+		if a.execute == nil {
+			log.Printf("No execute function defined for agent: %s", a.name)
+			// Send an error event if no execute function is defined
+			errorEvent.ErrorMessage = ptr.Ptr("No execute function defined for this agent")
+		} else if err := a.execute(invocationCtx, eventChan); err != nil {
+			log.Printf("Conversation flow failed: %v", err)
+			// Send error event
+			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Conversation flow failed: %v", err))
 		}
 
 		select {
-		case eventChan <- event:
-		case <-ctx.Done():
+		case eventChan <- errorEvent:
+		case <-invocationCtx.Done():
 			return
 		}
 	}()
@@ -156,8 +158,8 @@ func (a *CustomAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocati
 }
 
 // Run is a synchronous wrapper around RunAsync that collects all events.
-func (a *CustomAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := a.RunAsync(ctx, invocationCtx)
+func (a *CustomAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(invocationCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +171,7 @@ func (a *CustomAgent) Run(ctx context.Context, invocationCtx *core.InvocationCon
 
 	// Execute after-agent callback if present
 	if a.afterAgentCallback != nil {
-		if err := a.afterAgentCallback(ctx, invocationCtx, events); err != nil {
+		if err := a.afterAgentCallback(invocationCtx, events); err != nil {
 			return events, fmt.Errorf("after-agent callback failed: %w", err)
 		}
 	}

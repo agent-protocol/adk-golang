@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/agent-protocol/adk-golang/pkg/core"
@@ -160,7 +161,7 @@ func FileOperationWithArtifacts(ctx context.Context, toolCtx *core.ToolContext, 
 	switch operation {
 	case "save":
 		// Save content as an artifact
-		version, err := toolCtx.SaveArtifact(ctx, filename, []byte(content), "text/plain")
+		version, err := toolCtx.SaveArtifact(filename, []byte(content), "text/plain")
 		if err != nil {
 			return "", fmt.Errorf("failed to save artifact: %w", err)
 		}
@@ -168,7 +169,7 @@ func FileOperationWithArtifacts(ctx context.Context, toolCtx *core.ToolContext, 
 
 	case "load":
 		// Load content from an artifact
-		data, err := toolCtx.LoadArtifact(ctx, filename, nil)
+		data, err := toolCtx.LoadArtifact(filename, nil)
 		if err != nil {
 			return "", fmt.Errorf("failed to load artifact: %w", err)
 		}
@@ -176,7 +177,7 @@ func FileOperationWithArtifacts(ctx context.Context, toolCtx *core.ToolContext, 
 
 	case "list":
 		// List all artifacts
-		files, err := toolCtx.ListArtifacts(ctx)
+		files, err := toolCtx.ListArtifacts()
 		if err != nil {
 			return "", fmt.Errorf("failed to list artifacts: %w", err)
 		}
@@ -187,7 +188,7 @@ func FileOperationWithArtifacts(ctx context.Context, toolCtx *core.ToolContext, 
 	}
 }
 
-// TimerFunction demonstrates a long-running operation.
+// TimerFunction demonstrates a long-running operation with proper cancellation.
 func TimerFunction(ctx context.Context, duration string, message string) (string, error) {
 	d, err := time.ParseDuration(duration)
 	if err != nil {
@@ -199,6 +200,321 @@ func TimerFunction(ctx context.Context, duration string, message string) (string
 		return fmt.Sprintf("Timer finished after %s: %s", duration, message), nil
 	case <-ctx.Done():
 		return "", fmt.Errorf("timer cancelled: %w", ctx.Err())
+	}
+}
+
+// LongRunningTask demonstrates a more complex long-running operation with progress reporting.
+func LongRunningTask(ctx context.Context, toolCtx *core.ToolContext, steps int, stepDuration string) (map[string]interface{}, error) {
+	d, err := time.ParseDuration(stepDuration)
+	if err != nil {
+		return nil, fmt.Errorf("invalid step duration: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"total_steps":     steps,
+		"completed_steps": 0,
+		"status":          "running",
+		"start_time":      time.Now(),
+	}
+
+	// Save initial state
+	toolCtx.SetState("task_progress", 0)
+	toolCtx.SetState("task_status", "running")
+
+	for i := 1; i <= steps; i++ {
+		// Check for cancellation at each step
+		select {
+		case <-ctx.Done():
+			result["status"] = "cancelled"
+			result["completed_steps"] = i - 1
+			result["end_time"] = time.Now()
+			result["error"] = ctx.Err().Error()
+			toolCtx.SetState("task_status", "cancelled")
+			return result, fmt.Errorf("task cancelled at step %d: %w", i-1, ctx.Err())
+		case <-time.After(d):
+			// Step completed
+			progress := float64(i) / float64(steps)
+			result["completed_steps"] = i
+			result["progress"] = progress
+
+			// Update state
+			toolCtx.SetState("task_progress", progress)
+
+			if i == steps {
+				result["status"] = "completed"
+				result["end_time"] = time.Now()
+				toolCtx.SetState("task_status", "completed")
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// FileProcessingTask demonstrates file processing with cancellation support.
+func FileProcessingTask(ctx context.Context, toolCtx *core.ToolContext, filenames []string, operation string) (map[string]interface{}, error) {
+	result := map[string]interface{}{
+		"total_files":     len(filenames),
+		"processed_files": 0,
+		"failed_files":    []string{},
+		"results":         []map[string]interface{}{},
+		"status":          "processing",
+	}
+
+	for i, filename := range filenames {
+		// Check for cancellation before processing each file
+		select {
+		case <-ctx.Done():
+			result["status"] = "cancelled"
+			result["error"] = ctx.Err().Error()
+			return result, fmt.Errorf("file processing cancelled: %w", ctx.Err())
+		default:
+		}
+
+		// Simulate file processing
+		fileResult := map[string]interface{}{
+			"filename": filename,
+			"index":    i,
+		}
+
+		switch operation {
+		case "analyze":
+			// Simulate analysis with potential cancellation
+			select {
+			case <-ctx.Done():
+				result["status"] = "cancelled"
+				result["error"] = ctx.Err().Error()
+				return result, fmt.Errorf("file processing cancelled during analysis: %w", ctx.Err())
+			case <-time.After(100 * time.Millisecond): // Simulate work
+				fileResult["analysis"] = map[string]interface{}{
+					"size":     1024 + i*512,
+					"type":     "text",
+					"encoding": "utf-8",
+					"lines":    50 + i*10,
+				}
+			}
+
+		case "backup":
+			// Simulate backup with cancellation check
+			select {
+			case <-ctx.Done():
+				result["status"] = "cancelled"
+				result["error"] = ctx.Err().Error()
+				return result, fmt.Errorf("file processing cancelled during backup: %w", ctx.Err())
+			case <-time.After(200 * time.Millisecond): // Simulate work
+				backupName := fmt.Sprintf("%s.backup", filename)
+				fileResult["backup_created"] = backupName
+
+				// Save as artifact
+				content := fmt.Sprintf("Backup content for %s", filename)
+				version, err := toolCtx.SaveArtifact(backupName, []byte(content), "text/plain")
+				if err != nil {
+					result["failed_files"] = append(result["failed_files"].([]string), filename)
+					fileResult["error"] = err.Error()
+				} else {
+					fileResult["artifact_version"] = version
+				}
+			}
+
+		default:
+			result["failed_files"] = append(result["failed_files"].([]string), filename)
+			fileResult["error"] = fmt.Sprintf("unsupported operation: %s", operation)
+		}
+
+		result["results"] = append(result["results"].([]map[string]interface{}), fileResult)
+		result["processed_files"] = i + 1
+
+		// Update progress in state
+		progress := float64(i+1) / float64(len(filenames))
+		toolCtx.SetState("file_processing_progress", progress)
+	}
+
+	result["status"] = "completed"
+	return result, nil
+}
+
+// NetworkRequestWithRetry demonstrates network operations with cancellation and retry logic.
+func NetworkRequestWithRetry(ctx context.Context, url string, maxRetries int, retryDelay string) (map[string]interface{}, error) {
+	delay, err := time.ParseDuration(retryDelay)
+	if err != nil {
+		return nil, fmt.Errorf("invalid retry delay: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"url":         url,
+		"max_retries": maxRetries,
+		"attempts":    0,
+		"success":     false,
+		"start_time":  time.Now(),
+	}
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Check for cancellation before each attempt
+		select {
+		case <-ctx.Done():
+			result["status"] = "cancelled"
+			result["error"] = ctx.Err().Error()
+			result["end_time"] = time.Now()
+			return result, fmt.Errorf("network request cancelled: %w", ctx.Err())
+		default:
+		}
+
+		result["attempts"] = attempt
+
+		// Simulate network request
+		select {
+		case <-ctx.Done():
+			result["status"] = "cancelled"
+			result["error"] = ctx.Err().Error()
+			result["end_time"] = time.Now()
+			return result, fmt.Errorf("network request cancelled during attempt %d: %w", attempt, ctx.Err())
+		case <-time.After(500 * time.Millisecond): // Simulate network delay
+			// Simulate success/failure (succeed on last attempt for demo)
+			if attempt == maxRetries || attempt >= 2 {
+				result["success"] = true
+				result["status"] = "completed"
+				result["response"] = map[string]interface{}{
+					"status_code": 200,
+					"headers":     map[string]string{"Content-Type": "application/json"},
+					"body":        fmt.Sprintf("Response from %s", url),
+				}
+				result["end_time"] = time.Now()
+				return result, nil
+			}
+		}
+
+		// If not the last attempt, wait before retrying
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				result["status"] = "cancelled"
+				result["error"] = ctx.Err().Error()
+				result["end_time"] = time.Now()
+				return result, fmt.Errorf("network request cancelled during retry delay: %w", ctx.Err())
+			case <-time.After(delay):
+				// Continue to next attempt
+			}
+		}
+	}
+
+	result["status"] = "failed"
+	result["error"] = "max retries exceeded"
+	result["end_time"] = time.Now()
+	return result, fmt.Errorf("network request failed after %d attempts", maxRetries)
+}
+
+// ConcurrentProcessor demonstrates concurrent processing with proper cancellation.
+func ConcurrentProcessor(ctx context.Context, toolCtx *core.ToolContext, items []string, workers int) (map[string]interface{}, error) {
+	if workers <= 0 {
+		workers = 1
+	}
+	if workers > len(items) {
+		workers = len(items)
+	}
+
+	result := map[string]interface{}{
+		"total_items":     len(items),
+		"workers":         workers,
+		"processed_items": 0,
+		"failed_items":    []string{},
+		"results":         []map[string]interface{}{},
+		"status":          "processing",
+		"start_time":      time.Now(),
+	}
+
+	// Create channels for work distribution
+	workChan := make(chan string, len(items))
+	resultChan := make(chan map[string]interface{}, len(items))
+
+	// Create cancellation context for workers
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-workerCtx.Done():
+					return
+				case item, ok := <-workChan:
+					if !ok {
+						return
+					}
+
+					// Process item with cancellation check
+					itemResult := map[string]interface{}{
+						"item":      item,
+						"worker_id": workerID,
+					}
+
+					// Simulate processing
+					select {
+					case <-workerCtx.Done():
+						return
+					case <-time.After(100 * time.Millisecond):
+						itemResult["processed"] = true
+						itemResult["length"] = len(item)
+						itemResult["uppercase"] = strings.ToUpper(item)
+					}
+
+					select {
+					case resultChan <- itemResult:
+					case <-workerCtx.Done():
+						return
+					}
+				}
+			}
+		}(i)
+	}
+
+	// Send work to workers
+	go func() {
+		defer close(workChan)
+		for _, item := range items {
+			select {
+			case <-ctx.Done():
+				return
+			case workChan <- item:
+			}
+		}
+	}()
+
+	// Collect results
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Process results with cancellation support
+	processedCount := 0
+	for {
+		select {
+		case <-ctx.Done():
+			result["status"] = "cancelled"
+			result["error"] = ctx.Err().Error()
+			result["end_time"] = time.Now()
+			result["processed_items"] = processedCount
+			return result, fmt.Errorf("concurrent processing cancelled: %w", ctx.Err())
+		case itemResult, ok := <-resultChan:
+			if !ok {
+				// All results processed
+				result["status"] = "completed"
+				result["end_time"] = time.Now()
+				result["processed_items"] = processedCount
+				return result, nil
+			}
+
+			result["results"] = append(result["results"].([]map[string]interface{}), itemResult)
+			processedCount++
+
+			// Update progress
+			progress := float64(processedCount) / float64(len(items))
+			toolCtx.SetState("concurrent_processing_progress", progress)
+		}
 	}
 }
 

@@ -124,6 +124,7 @@ func (t *EnhancedAgentTool) RunAsync(ctx context.Context, args map[string]any, t
 
 	// Create a new invocation context for the agent
 	agentCtx := core.NewInvocationContext(
+		ctx,
 		fmt.Sprintf("%s_sub_%d", toolCtx.InvocationContext.InvocationID, time.Now().UnixNano()),
 		t.agent,
 		toolCtx.InvocationContext.Session,
@@ -158,7 +159,7 @@ func (t *EnhancedAgentTool) RunAsync(ctx context.Context, args map[string]any, t
 // executeAgent runs the agent and collects the results.
 func (t *EnhancedAgentTool) executeAgent(ctx context.Context, agentCtx *core.InvocationContext, toolCtx *core.ToolContext) (string, error) {
 	// Run the agent
-	eventStream, err := t.agent.RunAsync(ctx, agentCtx)
+	eventStream, err := t.agent.RunAsync(agentCtx)
 	if err != nil {
 		return "", fmt.Errorf("failed to start agent %s: %w", t.agent.Name(), err)
 	}

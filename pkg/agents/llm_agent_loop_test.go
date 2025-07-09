@@ -11,9 +11,6 @@ import (
 
 // TestEnhancedLlmAgent_ToolCallLimitExceeded tests the scenario where tool call limit is exceeded
 func TestEnhancedLlmAgent_ToolCallLimitExceeded(t *testing.T) {
-	// Setup
-	ctx := context.Background()
-
 	// Create agent with low tool call limit for testing
 	config := &LlmAgentConfig{
 		Model:         "test-model",
@@ -84,7 +81,7 @@ func TestEnhancedLlmAgent_ToolCallLimitExceeded(t *testing.T) {
 
 	// Setup session and invocation context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -98,7 +95,7 @@ func TestEnhancedLlmAgent_ToolCallLimitExceeded(t *testing.T) {
 	}
 
 	// Execute the agent
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
+	eventStream, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		t.Fatalf("RunAsync failed: %v", err)
 	}
@@ -187,9 +184,6 @@ func TestEnhancedLlmAgent_ToolCallLimitExceeded(t *testing.T) {
 
 // TestEnhancedLlmAgent_RepeatingPatternDetection tests the repeating pattern detection
 func TestEnhancedLlmAgent_RepeatingPatternDetection(t *testing.T) {
-	// Setup
-	ctx := context.Background()
-
 	// Create agent
 	config := &LlmAgentConfig{
 		Model:         "test-model",
@@ -228,7 +222,7 @@ func TestEnhancedLlmAgent_RepeatingPatternDetection(t *testing.T) {
 
 	// Setup session and invocation context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -242,7 +236,7 @@ func TestEnhancedLlmAgent_RepeatingPatternDetection(t *testing.T) {
 	}
 
 	// Execute the agent
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
+	eventStream, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		t.Fatalf("RunAsync failed: %v", err)
 	}
@@ -294,8 +288,6 @@ func TestEnhancedLlmAgent_RepeatingPatternDetection(t *testing.T) {
 
 // TestEnhancedLlmAgent_NormalCompletion tests normal conversation completion
 func TestEnhancedLlmAgent_NormalCompletion(t *testing.T) {
-	// Setup
-	ctx := context.Background()
 
 	config := &LlmAgentConfig{
 		Model:         "test-model",
@@ -345,7 +337,7 @@ func TestEnhancedLlmAgent_NormalCompletion(t *testing.T) {
 
 	// Setup session and invocation context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -354,7 +346,7 @@ func TestEnhancedLlmAgent_NormalCompletion(t *testing.T) {
 	}
 
 	// Execute the agent
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
+	eventStream, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		t.Fatalf("RunAsync failed: %v", err)
 	}

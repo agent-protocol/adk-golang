@@ -321,13 +321,14 @@ func (s *A2AServer) executeAgent(task *TaskExecution, agent core.BaseAgent) {
 
 	// Create invocation context
 	invocationCtx := &core.InvocationContext{
+		Context:      task.Context,
 		InvocationID: task.ID,
 		Agent:        agent,
 		UserContent:  content,
 	}
 
 	// Execute agent
-	eventChan, err := agent.RunAsync(task.Context, invocationCtx)
+	eventChan, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		task.Status.State = a2a.TaskStateFailed
 		task.Status.Message = &a2a.Message{

@@ -232,6 +232,7 @@ func (t *AgentTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *
 
 	// Create a new invocation context for the agent
 	agentCtx := core.NewInvocationContext(
+		ctx,
 		toolCtx.InvocationContext.InvocationID,
 		t.agent,
 		toolCtx.InvocationContext.Session,
@@ -250,7 +251,7 @@ func (t *AgentTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *
 	}
 
 	// Run the agent
-	eventStream, err := t.agent.RunAsync(ctx, agentCtx)
+	eventStream, err := t.agent.RunAsync(agentCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run agent %s: %w", t.agent.Name(), err)
 	}

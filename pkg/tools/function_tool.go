@@ -182,15 +182,15 @@ func (t *EnhancedFunctionTool) prepareCallArguments(ctx context.Context, toolCtx
 	for i := 0; i < fnType.NumIn(); i++ {
 		paramType := fnType.In(i)
 
-		// Special handling for context.Context
-		if paramType.Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
-			callArgs[i] = reflect.ValueOf(ctx)
+		// Special handling for ToolContext (check this first since ToolContext now embeds context.Context)
+		if paramType == reflect.TypeOf((*core.ToolContext)(nil)) {
+			callArgs[i] = reflect.ValueOf(toolCtx)
 			continue
 		}
 
-		// Special handling for ToolContext
-		if paramType == reflect.TypeOf((*core.ToolContext)(nil)) {
-			callArgs[i] = reflect.ValueOf(toolCtx)
+		// Special handling for context.Context
+		if paramType.Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
+			callArgs[i] = reflect.ValueOf(ctx)
 			continue
 		}
 

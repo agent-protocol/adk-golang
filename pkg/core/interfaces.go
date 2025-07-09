@@ -6,13 +6,11 @@ import (
 )
 
 // EventStream represents a stream of events from agent execution.
-type EventStream <-chan *Event
-
-// BeforeAgentCallback is called before an agent starts executing.
-type BeforeAgentCallback func(ctx context.Context, invocationCtx *InvocationContext) error
+type EventStream <-chan *Event // BeforeAgentCallback is called before an agent starts executing.
+type BeforeAgentCallback func(invocationCtx *InvocationContext) error
 
 // AfterAgentCallback is called after an agent finishes executing.
-type AfterAgentCallback func(ctx context.Context, invocationCtx *InvocationContext, events []*Event) error
+type AfterAgentCallback func(invocationCtx *InvocationContext, events []*Event) error
 
 // BaseAgent defines the interface that all agents must implement.
 type BaseAgent interface {
@@ -36,10 +34,10 @@ type BaseAgent interface {
 
 	// RunAsync executes the agent with the given context and returns an event stream.
 	// This is the main entry point for agent execution.
-	RunAsync(ctx context.Context, invocationCtx *InvocationContext) (EventStream, error)
+	RunAsync(invocationCtx *InvocationContext) (EventStream, error)
 
 	// Run is a synchronous wrapper around RunAsync that collects all events.
-	Run(ctx context.Context, invocationCtx *InvocationContext) ([]*Event, error)
+	Run(invocationCtx *InvocationContext) ([]*Event, error)
 
 	// FindAgent searches for an agent by name in the hierarchy.
 	// Returns nil if not found.
@@ -81,11 +79,11 @@ type BaseTool interface {
 	GetDeclaration() *FunctionDeclaration
 
 	// RunAsync executes the tool with the given arguments and context.
-	RunAsync(ctx context.Context, args map[string]any, toolCtx *ToolContext) (any, error)
+	RunAsync(toolCtx *ToolContext, args map[string]any) (any, error)
 
 	// ProcessLLMRequest allows the tool to modify LLM requests.
 	// This is used for built-in tools that need to be added to the LLM config.
-	ProcessLLMRequest(ctx context.Context, toolCtx *ToolContext, request *LLMRequest) error
+	ProcessLLMRequest(toolCtx *ToolContext, request *LLMRequest) error
 }
 
 // BaseToolset defines the interface for toolsets that provide multiple tools.

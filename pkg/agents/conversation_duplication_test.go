@@ -12,8 +12,6 @@ import (
 // TestEnhancedLlmAgent_ConversationDuplication tests the specific issue where
 // the same user query is repeated and causes the LLM to call the same tool repeatedly
 func TestEnhancedLlmAgent_ConversationDuplication(t *testing.T) {
-	// Setup
-	ctx := context.Background()
 
 	config := &LlmAgentConfig{
 		Model:         "test-model",
@@ -93,7 +91,7 @@ func TestEnhancedLlmAgent_ConversationDuplication(t *testing.T) {
 
 	// Setup session and invocation context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -102,7 +100,7 @@ func TestEnhancedLlmAgent_ConversationDuplication(t *testing.T) {
 	}
 
 	// Execute the agent
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
+	eventStream, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		t.Fatalf("RunAsync failed: %v", err)
 	}

@@ -33,7 +33,7 @@ func (m *mockAgent) GetAfterAgentCallback() core.AfterAgentCallback           { 
 func (m *mockAgent) SetAfterAgentCallback(callback core.AfterAgentCallback)   {}
 func (m *mockAgent) Cleanup(ctx context.Context) error                        { return nil }
 
-func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (m *mockAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	eventChan := make(chan *core.Event, 2)
 
 	go func() {
@@ -41,7 +41,7 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 
 		// Check for immediate cancellation
 		select {
-		case <-ctx.Done():
+		case <-invocationCtx.Done():
 			return
 		default:
 		}
@@ -50,7 +50,7 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 		if m.responseDelay > 0 {
 			select {
 			case <-time.After(m.responseDelay):
-			case <-ctx.Done():
+			case <-invocationCtx.Done():
 				return // Respect context cancellation
 			}
 		}
@@ -59,14 +59,14 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 		if m.simulateTimeout {
 			select {
 			case <-time.After(2 * time.Second):
-			case <-ctx.Done():
+			case <-invocationCtx.Done():
 				return
 			}
 		}
 
 		// Check context again before creating response
 		select {
-		case <-ctx.Done():
+		case <-invocationCtx.Done():
 			return
 		default:
 		}
@@ -101,7 +101,7 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 
 		select {
 		case eventChan <- event:
-		case <-ctx.Done():
+		case <-invocationCtx.Done():
 			return
 		}
 	}()
@@ -109,8 +109,8 @@ func (m *mockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 	return eventChan, nil
 }
 
-func (m *mockAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := m.RunAsync(ctx, invocationCtx)
+func (m *mockAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := m.RunAsync(invocationCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +179,7 @@ func TestEnhancedAgentTool_RunAsync(t *testing.T) {
 	}
 
 	invocationCtx := core.NewInvocationContext(
+		ctx,
 		"test_invocation",
 		mockAgent,
 		session,
@@ -292,6 +293,7 @@ func TestEnhancedAgentTool_ErrorHandling(t *testing.T) {
 			}
 
 			invocationCtx := core.NewInvocationContext(
+				ctx,
 				"test_invocation",
 				mockAgent,
 				session,
@@ -348,6 +350,7 @@ func TestEnhancedAgentTool_Timeout(t *testing.T) {
 	}
 
 	invocationCtx := core.NewInvocationContext(
+		ctx,
 		"test_invocation",
 		mockAgent,
 		session,

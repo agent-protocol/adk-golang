@@ -31,7 +31,7 @@ func (m *MockAgent) SubAgents() []core.BaseAgent          { return nil }
 func (m *MockAgent) ParentAgent() core.BaseAgent          { return nil }
 func (m *MockAgent) SetParentAgent(parent core.BaseAgent) {}
 
-func (m *MockAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (m *MockAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	if m.shouldError {
 		return nil, fmt.Errorf("mock agent error")
 	}
@@ -50,7 +50,7 @@ func (m *MockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 		for _, event := range m.events {
 			select {
 			case eventChan <- event:
-			case <-ctx.Done():
+			case <-invocationCtx.Done():
 				return
 			}
 		}
@@ -59,8 +59,8 @@ func (m *MockAgent) RunAsync(ctx context.Context, invocationCtx *core.Invocation
 	return eventChan, nil
 }
 
-func (m *MockAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := m.RunAsync(ctx, invocationCtx)
+func (m *MockAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := m.RunAsync(invocationCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -293,12 +293,12 @@ func TestRunnerCallbacks(t *testing.T) {
 	}
 
 	// Set callbacks
-	agent.SetBeforeAgentCallback(func(ctx context.Context, invocationCtx *core.InvocationContext) error {
+	agent.SetBeforeAgentCallback(func(invocationCtx *core.InvocationContext) error {
 		beforeCalled = true
 		return nil
 	})
 
-	agent.SetAfterAgentCallback(func(ctx context.Context, invocationCtx *core.InvocationContext, events []*core.Event) error {
+	agent.SetAfterAgentCallback(func(invocationCtx *core.InvocationContext, events []*core.Event) error {
 		afterCalled = true
 		callbackEvents = events
 		return nil

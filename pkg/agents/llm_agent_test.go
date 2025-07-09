@@ -108,12 +108,12 @@ func (t *MockTool) GetDeclaration() *core.FunctionDeclaration {
 	}
 }
 
-func (t *MockTool) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (t *MockTool) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	t.callCount++
 	return t.response, nil
 }
 
-func (t *MockTool) ProcessLLMRequest(ctx context.Context, toolCtx *core.ToolContext, request *core.LLMRequest) error {
+func (t *MockTool) ProcessLLMRequest(toolCtx *core.ToolContext, request *core.LLMRequest) error {
 	return nil
 }
 
@@ -206,7 +206,7 @@ func TestEnhancedLlmAgent_SimpleConversation(t *testing.T) {
 
 	// Create test session and context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -218,8 +218,7 @@ func TestEnhancedLlmAgent_SimpleConversation(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -290,7 +289,7 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 
 	// Create test session and context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -302,8 +301,7 @@ func TestEnhancedLlmAgent_ToolExecution(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -391,19 +389,19 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 	var beforeToolCalled, afterToolCalled bool
 
 	callbacks := &LlmAgentCallbacks{
-		BeforeModelCallback: func(ctx context.Context, invocationCtx *core.InvocationContext) error {
+		BeforeModelCallback: func(invocationCtx *core.InvocationContext) error {
 			beforeModelCalled = true
 			return nil
 		},
-		AfterModelCallback: func(ctx context.Context, invocationCtx *core.InvocationContext, events []*core.Event) error {
+		AfterModelCallback: func(invocationCtx *core.InvocationContext, events []*core.Event) error {
 			afterModelCalled = true
 			return nil
 		},
-		BeforeToolCallback: func(ctx context.Context, invocationCtx *core.InvocationContext) error {
+		BeforeToolCallback: func(invocationCtx *core.InvocationContext) error {
 			beforeToolCalled = true
 			return nil
 		},
-		AfterToolCallback: func(ctx context.Context, invocationCtx *core.InvocationContext, events []*core.Event) error {
+		AfterToolCallback: func(invocationCtx *core.InvocationContext, events []*core.Event) error {
 			afterToolCalled = true
 			return nil
 		},
@@ -446,7 +444,7 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 
 	// Create test context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -458,8 +456,7 @@ func TestLlmAgent_CallbackExecution(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	_, err := agent.Run(ctx, invocationCtx)
+	_, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -608,7 +605,7 @@ func TestEnhancedLlmAgent_LoopDetection_ToolCallLimit(t *testing.T) {
 
 	// Create test session and context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -620,8 +617,7 @@ func TestEnhancedLlmAgent_LoopDetection_ToolCallLimit(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -713,7 +709,7 @@ func TestEnhancedLlmAgent_LoopDetection_RepeatingPattern(t *testing.T) {
 
 	// Create test session and context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -725,8 +721,7 @@ func TestEnhancedLlmAgent_LoopDetection_RepeatingPattern(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -797,7 +792,7 @@ func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
 
 	// Create test session and context with limited max turns
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.RunConfig = &core.RunConfig{
 		MaxTurns: ptr.Ptr(5), // Low limit to test termination
 	}
@@ -812,8 +807,7 @@ func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
 	}
 
 	// Run the agent
-	ctx := context.Background()
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Agent run failed: %v", err)
 	}
@@ -838,7 +832,7 @@ func TestEnhancedLlmAgent_LoopDetection_MaxTurns(t *testing.T) {
 func TestConversationFlowManager_Creation(t *testing.T) {
 	agent := NewLLMAgent("test-agent", "Test agent", nil)
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 
 	// Test default max turns
 	flowManager := NewConversationFlowManager(agent, invocationCtx)
@@ -1800,10 +1794,10 @@ func (m *MockToolWithDeclaration) GetDeclaration() *core.FunctionDeclaration {
 	return m.declaration
 }
 
-func (m *MockToolWithDeclaration) RunAsync(ctx context.Context, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (m *MockToolWithDeclaration) RunAsync(toolCtx *core.ToolContext, args map[string]any) (any, error) {
 	return "mock result", nil
 }
 
-func (m *MockToolWithDeclaration) ProcessLLMRequest(ctx context.Context, toolCtx *core.ToolContext, request *core.LLMRequest) error {
+func (m *MockToolWithDeclaration) ProcessLLMRequest(toolCtx *core.ToolContext, request *core.LLMRequest) error {
 	return nil
 }

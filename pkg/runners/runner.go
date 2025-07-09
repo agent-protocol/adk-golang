@@ -132,7 +132,7 @@ func (r *RunnerImpl) RunAsync(ctx context.Context, req *core.RunRequest) (core.E
 	}
 
 	// Create invocation context
-	invocationCtx := r.createInvocationContext(req, session)
+	invocationCtx := r.createInvocationContext(ctx, req, session)
 
 	// Append new message to session if provided
 	if req.NewMessage != nil {
@@ -154,17 +154,16 @@ func (r *RunnerImpl) RunAsync(ctx context.Context, req *core.RunRequest) (core.E
 
 		// Execute before-agent callback if present
 		if callback := agentToRun.GetBeforeAgentCallback(); callback != nil {
-			if err := callback(ctx, invocationCtx); err != nil {
-				r.sendErrorEvent(eventChan, ctx, invocationCtx, agentToRun.Name(),
-					fmt.Sprintf("Before-agent callback failed: %v", err))
+			if err := callback(invocationCtx); err != nil {
+				r.sendErrorEvent(eventChan, invocationCtx, agentToRun.Name(), fmt.Sprintf("Before-agent callback failed: %v", err))
 				return
 			}
 		}
 
 		// Run the agent and get event stream
-		agentStream, err := agentToRun.RunAsync(ctx, invocationCtx)
+		agentStream, err := agentToRun.RunAsync(invocationCtx)
 		if err != nil {
-			r.sendErrorEvent(eventChan, ctx, invocationCtx, agentToRun.Name(),
+			r.sendErrorEvent(eventChan, invocationCtx, agentToRun.Name(),
 				fmt.Sprintf("Agent execution failed: %v", err))
 			return
 		}
@@ -203,9 +202,9 @@ func (r *RunnerImpl) RunAsync(ctx context.Context, req *core.RunRequest) (core.E
 
 		// Execute after-agent callback if present
 		if callback := agentToRun.GetAfterAgentCallback(); callback != nil {
-			if err := callback(ctx, invocationCtx, collectedEvents); err != nil {
+			if err := callback(invocationCtx, collectedEvents); err != nil {
 				// Send error as final event but don't block the stream
-				r.sendErrorEvent(eventChan, ctx, invocationCtx, agentToRun.Name(),
+				r.sendErrorEvent(eventChan, invocationCtx, agentToRun.Name(),
 					fmt.Sprintf("After-agent callback failed: %v", err))
 			}
 		}
@@ -267,20 +266,20 @@ func (r *RunnerImpl) getOrCreateSession(ctx context.Context, req *core.RunReques
 }
 
 // createInvocationContext creates a new invocation context.
-func (r *RunnerImpl) createInvocationContext(req *core.RunRequest, session *core.Session) *core.InvocationContext {
+func (r *RunnerImpl) createInvocationContext(ctx context.Context, req *core.RunRequest, session *core.Session) *core.InvocationContext {
 	invocationID := generateInvocationID()
 
-	ctx := core.NewInvocationContext(invocationID, r.agent, session, r.sessionService)
-	ctx.ArtifactService = r.artifactService
-	ctx.MemoryService = r.memoryService
-	ctx.CredentialService = r.credentialService
-	ctx.UserContent = req.NewMessage
+	invocationCtx := core.NewInvocationContext(ctx, invocationID, r.agent, session, r.sessionService)
+	invocationCtx.ArtifactService = r.artifactService
+	invocationCtx.MemoryService = r.memoryService
+	invocationCtx.CredentialService = r.credentialService
+	invocationCtx.UserContent = req.NewMessage
 
 	if req.RunConfig != nil {
-		ctx.RunConfig = req.RunConfig
+		invocationCtx.RunConfig = req.RunConfig
 	}
 
-	return ctx
+	return invocationCtx
 }
 
 // appendNewMessageToSession adds a new user message to the session.
@@ -325,14 +324,13 @@ func generateInvocationID() string {
 }
 
 // sendErrorEvent sends an error event to the event channel.
-func (r *RunnerImpl) sendErrorEvent(eventChan chan<- *core.Event, ctx context.Context,
-	invocationCtx *core.InvocationContext, author, message string) {
+func (r *RunnerImpl) sendErrorEvent(eventChan chan<- *core.Event, invocationCtx *core.InvocationContext, author, message string) {
 	errorEvent := core.NewEvent(invocationCtx.InvocationID, author)
 	errorEvent.ErrorMessage = ptr.Ptr(message)
 
 	select {
 	case eventChan <- errorEvent:
-	case <-ctx.Done():
+	case <-invocationCtx.Done():
 	}
 }
 

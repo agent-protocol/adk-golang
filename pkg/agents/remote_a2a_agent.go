@@ -314,9 +314,9 @@ func (r *RemoteA2aAgent) validateAgentCard(agentCard *a2a.AgentCard) error {
 }
 
 // RunAsync executes the agent with the given context
-func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (r *RemoteA2aAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	// Ensure agent is resolved
-	if err := r.ensureResolved(ctx); err != nil {
+	if err := r.ensureResolved(invocationCtx); err != nil {
 		return nil, err
 	}
 
@@ -326,6 +326,13 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 	// Start a goroutine to handle the A2A request
 	go func() {
 		defer close(eventChan)
+
+		// Check for cancellation before starting
+		select {
+		case <-invocationCtx.Done():
+			return
+		default:
+		}
 
 		// Convert session events to A2A message
 		message, err := r.constructA2AMessageFromSession(invocationCtx)
@@ -345,8 +352,19 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 				event.Branch = invocationCtx.Branch
 			}
 
-			eventChan <- event
+			select {
+			case eventChan <- event:
+			case <-invocationCtx.Done():
+				return
+			}
 			return
+		}
+
+		// Check for cancellation before network call
+		select {
+		case <-invocationCtx.Done():
+			return
+		default:
 		}
 
 		// Send message to remote agent
@@ -355,7 +373,7 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 			Message: *message,
 		}
 
-		task, err := r.a2aClient.SendMessage(ctx, taskParams)
+		task, err := r.a2aClient.SendMessage(invocationCtx, taskParams)
 		if err != nil {
 			event := core.NewEvent(invocationCtx.InvocationID, r.Name())
 			event.Content = &core.Content{
@@ -372,8 +390,19 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 				event.Branch = invocationCtx.Branch
 			}
 
-			eventChan <- event
+			select {
+			case eventChan <- event:
+			case <-invocationCtx.Done():
+				return
+			}
 			return
+		}
+
+		// Check for cancellation before processing response
+		select {
+		case <-invocationCtx.Done():
+			return
+		default:
 		}
 
 		// Convert A2A task to event
@@ -395,7 +424,11 @@ func (r *RemoteA2aAgent) RunAsync(ctx context.Context, invocationCtx *core.Invoc
 			}
 		}
 
-		eventChan <- event
+		select {
+		case eventChan <- event:
+		case <-invocationCtx.Done():
+			return
+		}
 	}()
 
 	return eventChan, nil

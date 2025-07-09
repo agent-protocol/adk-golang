@@ -82,13 +82,14 @@ func TestBaseAgentInterface(t *testing.T) {
 
 	// Test callbacks
 	callbackCalled := false
-	agent.SetBeforeAgentCallback(func(ctx context.Context, invocationCtx *core.InvocationContext) error {
+	agent.SetBeforeAgentCallback(func(invocationCtx *core.InvocationContext) error {
 		callbackCalled = true
 		return nil
 	})
 
 	// Create invocation context
 	invocationCtx := core.NewInvocationContext(
+		ctx,
 		"test_invocation",
 		agent,
 		session,
@@ -96,7 +97,7 @@ func TestBaseAgentInterface(t *testing.T) {
 	)
 
 	// Run the agent
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Failed to run agent: %v", err)
 	}
@@ -136,6 +137,7 @@ func TestInvocationContext(t *testing.T) {
 
 	// Test InvocationContext creation
 	invocationCtx := core.NewInvocationContext(
+		ctx,
 		"test_invocation",
 		agent,
 		session,
@@ -240,25 +242,26 @@ func TestAgentCallbacks(t *testing.T) {
 	afterCalled := false
 	var capturedEvents []*core.Event
 
-	agent.SetBeforeAgentCallback(func(ctx context.Context, invocationCtx *core.InvocationContext) error {
+	agent.SetBeforeAgentCallback(func(invocationCtx *core.InvocationContext) error {
 		beforeCalled = true
 		return nil
 	})
 
-	agent.SetAfterAgentCallback(func(ctx context.Context, invocationCtx *core.InvocationContext, events []*core.Event) error {
+	agent.SetAfterAgentCallback(func(invocationCtx *core.InvocationContext, events []*core.Event) error {
 		afterCalled = true
 		capturedEvents = events
 		return nil
 	})
 
 	invocationCtx := core.NewInvocationContext(
+		ctx,
 		"callback_test",
 		agent,
 		session,
 		sessionService,
 	)
 
-	events, err := agent.Run(ctx, invocationCtx)
+	events, err := agent.Run(invocationCtx)
 	if err != nil {
 		t.Fatalf("Failed to run agent: %v", err)
 	}

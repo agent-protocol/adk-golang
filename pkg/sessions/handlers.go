@@ -446,11 +446,18 @@ func NewAsyncEventHandler(handler SessionEventHandler, timeout time.Duration) *A
 // OnSessionCreated handles session creation asynchronously.
 func (h *AsyncEventHandler) OnSessionCreated(ctx context.Context, session *core.Session) error {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+		// Use parent context with timeout instead of ignoring it
+		timeoutCtx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
 
-		if err := h.handler.OnSessionCreated(ctx, session); err != nil {
-			log.Printf("Async handler error on session created: %v", err)
+		select {
+		case <-ctx.Done():
+			// Parent context was cancelled, abort
+			return
+		default:
+			if err := h.handler.OnSessionCreated(timeoutCtx, session); err != nil {
+				log.Printf("Async handler error on session created: %v", err)
+			}
 		}
 	}()
 	return nil
@@ -459,11 +466,18 @@ func (h *AsyncEventHandler) OnSessionCreated(ctx context.Context, session *core.
 // OnSessionUpdated handles session updates asynchronously.
 func (h *AsyncEventHandler) OnSessionUpdated(ctx context.Context, session *core.Session, oldState map[string]any) error {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+		// Use parent context with timeout instead of ignoring it
+		timeoutCtx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
 
-		if err := h.handler.OnSessionUpdated(ctx, session, oldState); err != nil {
-			log.Printf("Async handler error on session updated: %v", err)
+		select {
+		case <-ctx.Done():
+			// Parent context was cancelled, abort
+			return
+		default:
+			if err := h.handler.OnSessionUpdated(timeoutCtx, session, oldState); err != nil {
+				log.Printf("Async handler error on session updated: %v", err)
+			}
 		}
 	}()
 	return nil
@@ -472,11 +486,18 @@ func (h *AsyncEventHandler) OnSessionUpdated(ctx context.Context, session *core.
 // OnSessionDeleted handles session deletion asynchronously.
 func (h *AsyncEventHandler) OnSessionDeleted(ctx context.Context, appName, userID, sessionID string) error {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+		// Use parent context with timeout instead of ignoring it
+		timeoutCtx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
 
-		if err := h.handler.OnSessionDeleted(ctx, appName, userID, sessionID); err != nil {
-			log.Printf("Async handler error on session deleted: %v", err)
+		select {
+		case <-ctx.Done():
+			// Parent context was cancelled, abort
+			return
+		default:
+			if err := h.handler.OnSessionDeleted(timeoutCtx, appName, userID, sessionID); err != nil {
+				log.Printf("Async handler error on session deleted: %v", err)
+			}
 		}
 	}()
 	return nil
@@ -485,11 +506,18 @@ func (h *AsyncEventHandler) OnSessionDeleted(ctx context.Context, appName, userI
 // OnEventAdded handles event addition asynchronously.
 func (h *AsyncEventHandler) OnEventAdded(ctx context.Context, session *core.Session, event *core.Event) error {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+		// Use parent context with timeout instead of ignoring it
+		timeoutCtx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
 
-		if err := h.handler.OnEventAdded(ctx, session, event); err != nil {
-			log.Printf("Async handler error on event added: %v", err)
+		select {
+		case <-ctx.Done():
+			// Parent context was cancelled, abort
+			return
+		default:
+			if err := h.handler.OnEventAdded(timeoutCtx, session, event); err != nil {
+				log.Printf("Async handler error on event added: %v", err)
+			}
 		}
 	}()
 	return nil

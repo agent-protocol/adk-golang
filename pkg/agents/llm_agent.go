@@ -197,7 +197,7 @@ func (a *LLMAgent) SetCallbacks(callbacks *LlmAgentCallbacks) {
 }
 
 // RunAsync executes the LLM agent with comprehensive tool execution pipeline.
-func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationContext) (core.EventStream, error) {
+func (a *LLMAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	log.Printf("Starting RunAsync for agent: %s", a.name)
 	if a.llmConnection == nil {
 		log.Printf("LLM connection not configured for agent: %s", a.name)
@@ -206,7 +206,7 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 
 	// Execute before-agent callback if present
 	if a.beforeAgentCallback != nil {
-		if err := a.beforeAgentCallback(ctx, invocationCtx); err != nil {
+		if err := a.beforeAgentCallback(invocationCtx); err != nil {
 			return nil, fmt.Errorf("before-agent callback failed: %w", err)
 		}
 	}
@@ -217,7 +217,7 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 		defer close(eventChan)
 
 		log.Println("Executing conversation flow...")
-		if err := a.executeConversationFlow(ctx, invocationCtx, eventChan); err != nil {
+		if err := a.executeConversationFlow(invocationCtx, eventChan); err != nil {
 			log.Printf("Conversation flow failed: %v", err)
 			// Send error event
 			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
@@ -225,7 +225,7 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 
 			select {
 			case eventChan <- errorEvent:
-			case <-ctx.Done():
+			case <-invocationCtx.Context.Done():
 				return
 			}
 		}
@@ -236,7 +236,7 @@ func (a *LLMAgent) RunAsync(ctx context.Context, invocationCtx *core.InvocationC
 }
 
 // executeConversationFlow manages the complete conversation flow including tool execution.
-func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
+func (a *LLMAgent) executeConversationFlow(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error {
 	log.Println("Starting conversation flow...")
 
 	flowManager := NewConversationFlowManager(a, invocationCtx)
@@ -244,13 +244,13 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 	for turn := 0; turn < flowManager.maxTurns; turn++ {
 		// Check context cancellation
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-invocationCtx.Context.Done():
+			return invocationCtx.Context.Err()
 		default:
 		}
 
 		// Process LLM turn
-		event, shouldContinue, err := a.processLLMTurn(ctx, invocationCtx, turn)
+		event, shouldContinue, err := a.processLLMTurn(invocationCtx, turn)
 		if err != nil {
 			return err
 		}
@@ -270,7 +270,7 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 		if !shouldContinue {
 			// Final response - publish and exit
 			log.Printf("Publishing final response event: %s", formatContent(event.Content))
-			if err := flowManager.eventPublisher.PublishEvent(ctx, eventChan, event); err != nil {
+			if err := flowManager.eventPublisher.PublishEvent(invocationCtx, eventChan, event); err != nil {
 				log.Printf("Failed to publish final event: %v", err)
 				return err
 			}
@@ -281,7 +281,7 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 
 		// Check for loop conditions
 		functionCalls := event.GetFunctionCalls()
-		if err := a.checkLoopConditions(ctx, invocationCtx, eventChan, flowManager, functionCalls, turn); err != nil {
+		if err := a.checkLoopConditions(invocationCtx, eventChan, flowManager, functionCalls, turn); err != nil {
 			// Check if this is a graceful completion
 			if _, isComplete := err.(ErrConversationComplete); isComplete {
 				log.Printf("Conversation completed gracefully: %v", err)
@@ -291,7 +291,7 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 		}
 
 		// Process tool calls
-		if err := a.processToolCalls(ctx, invocationCtx, eventChan, event, functionCalls); err != nil {
+		if err := a.processToolCalls(invocationCtx, eventChan, event, functionCalls); err != nil {
 			return err
 		}
 
@@ -305,7 +305,7 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 				"I've completed the tool execution. Based on the results, I can provide you with the information you requested.",
 			)
 
-			if err := flowManager.eventPublisher.PublishEvent(ctx, eventChan, finalEvent); err != nil {
+			if err := flowManager.eventPublisher.PublishEvent(invocationCtx, eventChan, finalEvent); err != nil {
 				return err
 			}
 			invocationCtx.Session.AddEvent(finalEvent)
@@ -318,7 +318,7 @@ func (a *LLMAgent) executeConversationFlow(ctx context.Context, invocationCtx *c
 }
 
 // processLLMTurn processes a single LLM turn and returns the event and whether to continue
-func (a *LLMAgent) processLLMTurn(ctx context.Context, invocationCtx *core.InvocationContext, turn int) (*core.Event, bool, error) {
+func (a *LLMAgent) processLLMTurn(invocationCtx *core.InvocationContext, turn int) (*core.Event, bool, error) {
 	// Log user input if present
 	if invocationCtx.UserContent != nil {
 		log.Printf("User input: %s", formatContent(invocationCtx.UserContent))
@@ -334,14 +334,14 @@ func (a *LLMAgent) processLLMTurn(ctx context.Context, invocationCtx *core.Invoc
 
 	// Execute before-model callback
 	if a.callbacks.BeforeModelCallback != nil {
-		if err := a.callbacks.BeforeModelCallback(ctx, invocationCtx); err != nil {
+		if err := a.callbacks.BeforeModelCallback(invocationCtx); err != nil {
 			return nil, false, fmt.Errorf("before-model callback failed: %w", err)
 		}
 	}
 
 	// Make LLM call with retry logic
 	log.Println("Making LLM call...")
-	response, err := a.makeRetriableLLMCall(ctx, request)
+	response, err := a.makeRetriableLLMCall(invocationCtx, request)
 	if err != nil {
 		log.Printf("LLM request failed: %v", err)
 		return nil, false, fmt.Errorf("LLM request failed: %w", err)
@@ -355,7 +355,7 @@ func (a *LLMAgent) processLLMTurn(ctx context.Context, invocationCtx *core.Invoc
 
 	// Execute after-model callback
 	if a.callbacks.AfterModelCallback != nil {
-		if err := a.callbacks.AfterModelCallback(ctx, invocationCtx, []*core.Event{event}); err != nil {
+		if err := a.callbacks.AfterModelCallback(invocationCtx, []*core.Event{event}); err != nil {
 			return nil, false, fmt.Errorf("after-model callback failed: %w", err)
 		}
 	}
@@ -384,7 +384,7 @@ func (e ErrConversationComplete) Error() string {
 }
 
 // checkLoopConditions checks various loop conditions and handles them
-func (a *LLMAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, flowManager *ConversationFlowManager, functionCalls []*core.FunctionCall, turn int) error {
+func (a *LLMAgent) checkLoopConditions(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, flowManager *ConversationFlowManager, functionCalls []*core.FunctionCall, turn int) error {
 	// Check total tool calls limit to prevent infinite loops
 	if flowManager.loopDetector.CheckToolCallLimit(functionCalls, flowManager.maxToolCalls) {
 		log.Printf("Maximum total tool calls exceeded: %d (max: %d)", flowManager.loopDetector.totalToolCalls, flowManager.maxToolCalls)
@@ -395,7 +395,7 @@ func (a *LLMAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.
 			"I've reached the maximum number of tool calls. Let me provide a direct response based on the information I have.",
 		)
 
-		if err := flowManager.eventPublisher.PublishEvent(ctx, eventChan, finalEvent); err != nil {
+		if err := flowManager.eventPublisher.PublishEvent(invocationCtx, eventChan, finalEvent); err != nil {
 			return err
 		}
 		invocationCtx.Session.AddEvent(finalEvent)
@@ -412,7 +412,7 @@ func (a *LLMAgent) checkLoopConditions(ctx context.Context, invocationCtx *core.
 }
 
 // processToolCalls processes tool calls and publishes events
-func (a *LLMAgent) processToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, event *core.Event, functionCalls []*core.FunctionCall) error {
+func (a *LLMAgent) processToolCalls(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event, event *core.Event, functionCalls []*core.FunctionCall) error {
 	// Validate function call arguments (allow empty args for no-parameter functions)
 	for _, funcCall := range functionCalls {
 		if funcCall.Args == nil {
@@ -425,15 +425,15 @@ func (a *LLMAgent) processToolCalls(ctx context.Context, invocationCtx *core.Inv
 	// Send the function call event first
 	select {
 	case eventChan <- event:
-	case <-ctx.Done():
-		return ctx.Err()
+	case <-invocationCtx.Done():
+		return invocationCtx.Err()
 	}
 
 	// Add event to session for next iteration
 	invocationCtx.Session.AddEvent(event)
 
 	// Execute tools and collect responses
-	toolResponses, err := a.executeToolCalls(ctx, invocationCtx, functionCalls, eventChan)
+	toolResponses, err := a.executeToolCalls(invocationCtx, functionCalls, eventChan)
 	if err != nil {
 		return fmt.Errorf("tool execution failed: %w", err)
 	}
@@ -447,8 +447,8 @@ func (a *LLMAgent) processToolCalls(ctx context.Context, invocationCtx *core.Inv
 
 	select {
 	case eventChan <- responseEvent:
-	case <-ctx.Done():
-		return ctx.Err()
+	case <-invocationCtx.Done():
+		return invocationCtx.Err()
 	}
 
 	// Add tool response event to session
@@ -461,12 +461,12 @@ func (a *LLMAgent) processToolCalls(ctx context.Context, invocationCtx *core.Inv
 }
 
 // executeToolCalls executes all function calls and returns their responses.
-func (a *LLMAgent) executeToolCalls(ctx context.Context, invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
+func (a *LLMAgent) executeToolCalls(invocationCtx *core.InvocationContext, functionCalls []*core.FunctionCall, eventChan chan<- *core.Event) ([]core.Part, error) {
 	log.Println("Starting tool execution...")
 
 	// Execute before-tool callback
 	if a.callbacks.BeforeToolCallback != nil {
-		if err := a.callbacks.BeforeToolCallback(ctx, invocationCtx); err != nil {
+		if err := a.callbacks.BeforeToolCallback(invocationCtx); err != nil {
 			return nil, fmt.Errorf("before-tool callback failed: %w", err)
 		}
 	}
@@ -496,7 +496,7 @@ func (a *LLMAgent) executeToolCalls(ctx context.Context, invocationCtx *core.Inv
 		toolCtx := core.NewToolContext(invocationCtx)
 		toolCtx.FunctionCallID = &funcCall.ID
 
-		result, err := a.executeToolWithTimeout(ctx, tool, funcCall.Args, toolCtx)
+		result, err := a.executeToolWithTimeout(toolCtx, tool, funcCall.Args)
 		if err != nil {
 			log.Printf("Tool execution failed for %s: %v", tool.Name(), err)
 			toolResponses = append(toolResponses, core.Part{
@@ -559,7 +559,7 @@ func (a *LLMAgent) executeToolCalls(ctx context.Context, invocationCtx *core.Inv
 			}
 		}
 
-		if err := a.callbacks.AfterToolCallback(ctx, invocationCtx, toolEvents); err != nil {
+		if err := a.callbacks.AfterToolCallback(invocationCtx, toolEvents); err != nil {
 			return nil, fmt.Errorf("after-tool callback failed: %w", err)
 		}
 	}
@@ -568,10 +568,8 @@ func (a *LLMAgent) executeToolCalls(ctx context.Context, invocationCtx *core.Inv
 }
 
 // executeToolWithTimeout executes a tool with the configured timeout.
-func (a *LLMAgent) executeToolWithTimeout(ctx context.Context, tool core.BaseTool, args map[string]any, toolCtx *core.ToolContext) (any, error) {
+func (a *LLMAgent) executeToolWithTimeout(toolCtx *core.ToolContext, tool core.BaseTool, args map[string]any) (any, error) {
 	// Create context with timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, a.config.ToolCallTimeout)
-	defer cancel()
 
 	log.Printf("Tool arguments: %+v", args)
 	if args == nil {
@@ -579,7 +577,7 @@ func (a *LLMAgent) executeToolWithTimeout(ctx context.Context, tool core.BaseToo
 	}
 
 	// Execute tool
-	return tool.RunAsync(timeoutCtx, args, toolCtx)
+	return tool.RunAsync(toolCtx, args)
 }
 
 // makeRetriableLLMCall makes an LLM call with retry logic.
@@ -685,7 +683,6 @@ func (a *LLMAgent) addSystemInstruction(contents []core.Content) []core.Content 
 		},
 	}
 
-	log.Printf("Added system instruction: %s", a.instruction)
 	return append(contents, systemContent)
 }
 
@@ -812,8 +809,8 @@ func (a *LLMAgent) logRequestContents(contents []core.Content) {
 }
 
 // Run is a synchronous wrapper around RunAsync.
-func (a *LLMAgent) Run(ctx context.Context, invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := a.RunAsync(ctx, invocationCtx)
+func (a *LLMAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(invocationCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -825,7 +822,7 @@ func (a *LLMAgent) Run(ctx context.Context, invocationCtx *core.InvocationContex
 
 	// Execute after-agent callback if present
 	if a.afterAgentCallback != nil {
-		if err := a.afterAgentCallback(ctx, invocationCtx, events); err != nil {
+		if err := a.afterAgentCallback(invocationCtx, events); err != nil {
 			return events, fmt.Errorf("after-agent callback failed: %w", err)
 		}
 	}

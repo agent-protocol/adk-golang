@@ -70,7 +70,7 @@ func TestEnhancedFunctionTool_RunAsync(t *testing.T) {
 	// Create test context
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	// Test execution
@@ -123,7 +123,7 @@ func TestParameterValidation(t *testing.T) {
 
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	for _, tt := range tests {
@@ -212,7 +212,7 @@ func TestContextHandling(t *testing.T) {
 
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	// Set some initial state
@@ -246,7 +246,7 @@ func TestErrorHandling(t *testing.T) {
 
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	// Test division by zero
@@ -309,7 +309,7 @@ func TestConcurrentExecution(t *testing.T) {
 
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	// Run multiple instances concurrently
@@ -365,7 +365,7 @@ func BenchmarkFunctionExecution(b *testing.B) {
 
 	ctx := context.Background()
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", nil, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", nil, session, nil)
 	toolCtx := core.NewToolContext(invocationCtx)
 
 	args := map[string]interface{}{

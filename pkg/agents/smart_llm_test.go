@@ -88,7 +88,6 @@ func (m *SmartMockLLMConnection) Close(ctx context.Context) error {
 // TestEnhancedLlmAgent_SmartLLMBehavior tests with a more realistic LLM that uses function responses
 func TestEnhancedLlmAgent_SmartLLMBehavior(t *testing.T) {
 	// Setup
-	ctx := context.Background()
 
 	config := &LlmAgentConfig{
 		Model:         "test-model",
@@ -116,7 +115,7 @@ func TestEnhancedLlmAgent_SmartLLMBehavior(t *testing.T) {
 
 	// Setup session and invocation context
 	session := core.NewSession("test-session", "test-app", "test-user")
-	invocationCtx := core.NewInvocationContext("test-invocation", agent, session, nil)
+	invocationCtx := core.NewInvocationContext(context.Background(), "test-invocation", agent, session, nil)
 	invocationCtx.UserContent = &core.Content{
 		Role: "user",
 		Parts: []core.Part{
@@ -125,7 +124,7 @@ func TestEnhancedLlmAgent_SmartLLMBehavior(t *testing.T) {
 	}
 
 	// Execute the agent
-	eventStream, err := agent.RunAsync(ctx, invocationCtx)
+	eventStream, err := agent.RunAsync(invocationCtx)
 	if err != nil {
 		t.Fatalf("RunAsync failed: %v", err)
 	}

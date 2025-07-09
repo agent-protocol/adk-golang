@@ -279,7 +279,9 @@ func (s *Session) Validate() error {
 }
 
 // InvocationContext represents the context for a single agent invocation.
+// It embeds the standard Go context for cancellation and timeout handling.
 type InvocationContext struct {
+	context.Context   // Embedded context for cancellation and timeouts
 	InvocationID      string
 	Agent             BaseAgent
 	Session           *Session
@@ -293,14 +295,16 @@ type InvocationContext struct {
 	EndInvocation     bool
 }
 
-// NewInvocationContext creates a new invocation context.
+// NewInvocationContext creates a new invocation context with the given Go context.
 func NewInvocationContext(
+	ctx context.Context,
 	invocationID string,
 	agent BaseAgent,
 	session *Session,
 	sessionService SessionService,
 ) *InvocationContext {
 	return &InvocationContext{
+		Context:        ctx,
 		InvocationID:   invocationID,
 		Agent:          agent,
 		Session:        session,
@@ -381,6 +385,7 @@ func (ctx *InvocationContext) SetEndInvocation(end bool) {
 // Clone creates a copy of the invocation context with the same services but potentially different agent/session.
 func (ctx *InvocationContext) Clone() *InvocationContext {
 	clone := &InvocationContext{
+		Context:           ctx.Context, // Share the same context for proper cancellation
 		InvocationID:      ctx.InvocationID,
 		Agent:             ctx.Agent,
 		Session:           ctx.Session,
@@ -418,7 +423,40 @@ func (ctx *InvocationContext) CreateSubContext(subAgent BaseAgent, subBranch str
 	return subCtx
 }
 
+// WithTimeout creates a new context with a timeout.
+func (ctx *InvocationContext) WithTimeout(timeout time.Duration) (*InvocationContext, context.CancelFunc) {
+	timeoutCtx, cancel := context.WithTimeout(ctx.Context, timeout)
+	newCtx := ctx.Clone()
+	newCtx.Context = timeoutCtx
+	return newCtx, cancel
+}
+
+// WithCancel creates a new context with cancellation.
+func (ctx *InvocationContext) WithCancel() (*InvocationContext, context.CancelFunc) {
+	cancelCtx, cancel := context.WithCancel(ctx.Context)
+	newCtx := ctx.Clone()
+	newCtx.Context = cancelCtx
+	return newCtx, cancel
+}
+
+// WithDeadline creates a new context with a deadline.
+func (ctx *InvocationContext) WithDeadline(deadline time.Time) (*InvocationContext, context.CancelFunc) {
+	deadlineCtx, cancel := context.WithDeadline(ctx.Context, deadline)
+	newCtx := ctx.Clone()
+	newCtx.Context = deadlineCtx
+	return newCtx, cancel
+}
+
+// WithValue creates a new context with a value.
+func (ctx *InvocationContext) WithValue(key, value interface{}) *InvocationContext {
+	valueCtx := context.WithValue(ctx.Context, key, value)
+	newCtx := ctx.Clone()
+	newCtx.Context = valueCtx
+	return newCtx
+}
+
 // ToolContext provides context for tool execution.
+// It embeds the standard Go context for cancellation and timeout handling.
 type ToolContext struct {
 	InvocationContext *InvocationContext
 	State             *State
@@ -427,7 +465,7 @@ type ToolContext struct {
 }
 
 // SaveArtifact saves an artifact and returns its version.
-func (tc *ToolContext) SaveArtifact(ctx context.Context, filename string, content []byte, mimeType string) (int, error) {
+func (tc *ToolContext) SaveArtifact(filename string, content []byte, mimeType string) (int, error) {
 	log.Printf("Saving artifact: filename=%s, mimeType=%s", filename, mimeType)
 	if tc.InvocationContext.ArtifactService == nil {
 		return 0, fmt.Errorf("artifact service not available")
@@ -442,11 +480,11 @@ func (tc *ToolContext) SaveArtifact(ctx context.Context, filename string, conten
 		MimeType:  mimeType,
 	}
 
-	return tc.InvocationContext.ArtifactService.SaveArtifact(ctx, req)
+	return tc.InvocationContext.ArtifactService.SaveArtifact(tc.InvocationContext, req)
 }
 
 // LoadArtifact loads an artifact by filename and optional version.
-func (tc *ToolContext) LoadArtifact(ctx context.Context, filename string, version *int) ([]byte, error) {
+func (tc *ToolContext) LoadArtifact(filename string, version *int) ([]byte, error) {
 	log.Printf("Loading artifact: filename=%s, version=%v", filename, version)
 	if tc.InvocationContext.ArtifactService == nil {
 		return nil, fmt.Errorf("artifact service not available")
@@ -460,11 +498,11 @@ func (tc *ToolContext) LoadArtifact(ctx context.Context, filename string, versio
 		Version:   version,
 	}
 
-	return tc.InvocationContext.ArtifactService.LoadArtifact(ctx, req)
+	return tc.InvocationContext.ArtifactService.LoadArtifact(tc.InvocationContext, req)
 }
 
 // ListArtifacts returns all artifact filenames for the current session.
-func (tc *ToolContext) ListArtifacts(ctx context.Context) ([]string, error) {
+func (tc *ToolContext) ListArtifacts() ([]string, error) {
 	if tc.InvocationContext.ArtifactService == nil {
 		return nil, fmt.Errorf("artifact service not available")
 	}
@@ -475,11 +513,11 @@ func (tc *ToolContext) ListArtifacts(ctx context.Context) ([]string, error) {
 		SessionID: tc.InvocationContext.Session.ID,
 	}
 
-	return tc.InvocationContext.ArtifactService.ListArtifactKeys(ctx, req)
+	return tc.InvocationContext.ArtifactService.ListArtifactKeys(tc.InvocationContext, req)
 }
 
 // SearchMemory searches for relevant events based on a query.
-func (tc *ToolContext) SearchMemory(ctx context.Context, query string, limit int) ([]*Event, error) {
+func (tc *ToolContext) SearchMemory(query string, limit int) ([]*Event, error) {
 	if tc.InvocationContext.MemoryService == nil {
 		return nil, fmt.Errorf("memory service not available")
 	}
@@ -491,7 +529,7 @@ func (tc *ToolContext) SearchMemory(ctx context.Context, query string, limit int
 		Limit:   limit,
 	}
 
-	return tc.InvocationContext.MemoryService.RetrieveRelevantEvents(ctx, req)
+	return tc.InvocationContext.MemoryService.RetrieveRelevantEvents(tc.InvocationContext, req)
 }
 
 // RequestCredential requests authentication credentials for the given scheme.
@@ -504,12 +542,12 @@ func (tc *ToolContext) RequestCredential(credentialID string, authConfig AuthCon
 }
 
 // GetCredential retrieves a credential by ID.
-func (tc *ToolContext) GetCredential(ctx context.Context, credentialID string) (*Credential, error) {
+func (tc *ToolContext) GetCredential(credentialID string) (*Credential, error) {
 	if tc.InvocationContext.CredentialService == nil {
 		return nil, fmt.Errorf("credential service not available")
 	}
 
-	return tc.InvocationContext.CredentialService.GetCredential(ctx, credentialID)
+	return tc.InvocationContext.CredentialService.GetCredential(tc.InvocationContext, credentialID)
 }
 
 // TransferToAgent transfers control to another agent.
@@ -717,7 +755,7 @@ type RunRequest struct {
 	RunConfig  *RunConfig `json:"run_config,omitempty"`
 }
 
-// NewToolContext creates a new tool context.
+// NewToolContext creates a new tool context with the embedded Go context.
 func NewToolContext(invocationCtx *InvocationContext) *ToolContext {
 	return &ToolContext{
 		InvocationContext: invocationCtx,
