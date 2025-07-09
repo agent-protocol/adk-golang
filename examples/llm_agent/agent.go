@@ -57,8 +57,8 @@ func init() {
 
 	// Create the LLM agent
 	agent := agents.NewLLMAgent(
-		"duckduckgo_search_agent",
-		"Agent to answer questions using DuckDuckGo Search", // Description
+		"llm_agent",
+		"Agent to answer questions using Ollama and DuckDuckGo Search", // Description
 		agentConfig,
 	)
 

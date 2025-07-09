@@ -32,6 +32,11 @@ func NewBaseAgent(name, description string) *CustomAgent {
 	}
 }
 
+// SetExecute sets the function that will be called to execute the agent's logic.
+func (a *CustomAgent) SetExecute(execute func(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error) {
+	a.execute = execute
+}
+
 // Name returns the agent's unique identifier.
 func (a *CustomAgent) Name() string {
 	return a.name
@@ -119,6 +124,28 @@ func (a *CustomAgent) FindSubAgent(name string) core.BaseAgent {
 	return nil
 }
 
+// Run is a synchronous wrapper around RunAsync that collects all events.
+func (a *CustomAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	stream, err := a.RunAsync(invocationCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*core.Event
+	for event := range stream {
+		events = append(events, event)
+	}
+
+	// Execute after-agent callback if present
+	if a.afterAgentCallback != nil {
+		if err := a.afterAgentCallback(invocationCtx, events); err != nil {
+			return events, fmt.Errorf("after-agent callback failed: %w", err)
+		}
+	}
+
+	return events, nil
+}
+
 // RunAsync executes the agent with the given context and returns an event stream.
 // This is a base implementation that should be overridden by concrete agents.
 func (a *CustomAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
@@ -155,28 +182,6 @@ func (a *CustomAgent) RunAsync(invocationCtx *core.InvocationContext) (core.Even
 	}()
 
 	return eventChan, nil
-}
-
-// Run is a synchronous wrapper around RunAsync that collects all events.
-func (a *CustomAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := a.RunAsync(invocationCtx)
-	if err != nil {
-		return nil, err
-	}
-
-	var events []*core.Event
-	for event := range stream {
-		events = append(events, event)
-	}
-
-	// Execute after-agent callback if present
-	if a.afterAgentCallback != nil {
-		if err := a.afterAgentCallback(invocationCtx, events); err != nil {
-			return events, fmt.Errorf("after-agent callback failed: %w", err)
-		}
-	}
-
-	return events, nil
 }
 
 // Cleanup performs any necessary cleanup operations.

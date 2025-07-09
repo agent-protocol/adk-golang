@@ -119,6 +119,8 @@ func NewLLMAgent(name, description string, config *LlmAgentConfig) *LLMAgent {
 		callbacks:   &LlmAgentCallbacks{},
 	}
 
+	agent.CustomAgent.SetExecute(agent.executeConversationFlow)
+
 	// Set system instruction if provided in config
 	if config.SystemInstruction != nil {
 		agent.SetInstruction(*config.SystemInstruction)
@@ -196,6 +198,11 @@ func (a *LLMAgent) SetCallbacks(callbacks *LlmAgentCallbacks) {
 	a.callbacks = callbacks
 }
 
+// Run is a synchronous wrapper around RunAsync.
+func (a *LLMAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
+	return a.CustomAgent.Run(invocationCtx)
+}
+
 // RunAsync executes the LLM agent with comprehensive tool execution pipeline.
 func (a *LLMAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	log.Printf("Starting RunAsync for agent: %s", a.name)
@@ -204,35 +211,7 @@ func (a *LLMAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventSt
 		return nil, fmt.Errorf("LLM connection not configured for agent %s", a.name)
 	}
 
-	// Execute before-agent callback if present
-	if a.beforeAgentCallback != nil {
-		if err := a.beforeAgentCallback(invocationCtx); err != nil {
-			return nil, fmt.Errorf("before-agent callback failed: %w", err)
-		}
-	}
-
-	eventChan := make(chan *core.Event, 10)
-
-	go func() {
-		defer close(eventChan)
-
-		log.Println("Executing conversation flow...")
-		if err := a.executeConversationFlow(invocationCtx, eventChan); err != nil {
-			log.Printf("Conversation flow failed: %v", err)
-			// Send error event
-			errorEvent := core.NewEvent(invocationCtx.InvocationID, a.name)
-			errorEvent.ErrorMessage = ptr.Ptr(fmt.Sprintf("Conversation flow failed: %v", err))
-
-			select {
-			case eventChan <- errorEvent:
-			case <-invocationCtx.Context.Done():
-				return
-			}
-		}
-	}()
-
-	log.Println("RunAsync completed.")
-	return eventChan, nil
+	return a.CustomAgent.RunAsync(invocationCtx)
 }
 
 // executeConversationFlow manages the complete conversation flow including tool execution.
@@ -806,26 +785,4 @@ func (a *LLMAgent) logRequestContents(contents []core.Content) {
 			}
 		}
 	}
-}
-
-// Run is a synchronous wrapper around RunAsync.
-func (a *LLMAgent) Run(invocationCtx *core.InvocationContext) ([]*core.Event, error) {
-	stream, err := a.RunAsync(invocationCtx)
-	if err != nil {
-		return nil, err
-	}
-
-	var events []*core.Event
-	for event := range stream {
-		events = append(events, event)
-	}
-
-	// Execute after-agent callback if present
-	if a.afterAgentCallback != nil {
-		if err := a.afterAgentCallback(invocationCtx, events); err != nil {
-			return events, fmt.Errorf("after-agent callback failed: %w", err)
-		}
-	}
-
-	return events, nil
 }
