@@ -75,12 +75,6 @@ func runCommandAction(c *cli.Context) error {
 
 	// Load the agent
 	loader := utils.NewAgentLoader(agentParentDir)
-
-	// Load .env file if present
-	if err := loader.LoadDotEnv(agentFolderName); err != nil {
-		return fmt.Errorf("failed to load .env: %w", err)
-	}
-
 	rootAgent, err := loader.LoadAgent(agentFolderName)
 	if err != nil {
 		return fmt.Errorf("failed to load agent: %w", err)
