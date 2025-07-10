@@ -14,96 +14,67 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
-// A2AServer wraps local agents as A2A endpoints
+// A2AServer wraps a single local agent as an A2A endpoint
 type A2AServer struct {
-	agents     map[string]core.BaseAgent
-	agentCards map[string]*a2a.AgentCard
-	tasks      map[string]*TaskExecution
-	mu         sync.RWMutex
+	agent     core.BaseAgent
+	agentCard *a2a.AgentCard
+	tasks     map[string]*TaskExecution
+	mu        sync.RWMutex
 }
 
 // A2AServerConfig contains configuration for the A2A server
 type A2AServerConfig struct {
-	Agents     map[string]core.BaseAgent
-	AgentCards map[string]*a2a.AgentCard
+	Agent     core.BaseAgent
+	AgentCard *a2a.AgentCard
 }
 
 // NewA2AServer creates a new A2A server
 func NewA2AServer(config A2AServerConfig) *A2AServer {
-	server := &A2AServer{
-		agents:     config.Agents,
-		agentCards: config.AgentCards,
-		tasks:      make(map[string]*TaskExecution),
+	if config.Agent == nil {
+		panic("agent is required")
+	}
+	if config.AgentCard == nil {
+		panic("agent card is required")
 	}
 
-	if server.agents == nil {
-		server.agents = make(map[string]core.BaseAgent)
+	return &A2AServer{
+		agent:     config.Agent,
+		agentCard: config.AgentCard,
+		tasks:     make(map[string]*TaskExecution),
 	}
-	if server.agentCards == nil {
-		server.agentCards = make(map[string]*a2a.AgentCard)
-	}
+}
 
-	return server
+// NewSimpleA2AServer creates a new A2A server with an agent and agent card
+func NewSimpleA2AServer(agent core.BaseAgent, agentCard *a2a.AgentCard) *A2AServer {
+	return NewA2AServer(A2AServerConfig{
+		Agent:     agent,
+		AgentCard: agentCard,
+	})
 }
 
 // TaskExecution tracks the execution state of an A2A task
 type TaskExecution struct {
-	ID        string
-	AgentName string
-	Message   *a2a.Message
-	Context   context.Context
-	Cancel    context.CancelFunc
-	Status    *a2a.TaskStatus
-	Events    chan *core.Event
-	Done      chan struct{}
+	ID      string
+	Message *a2a.Message
+	Context context.Context
+	Cancel  context.CancelFunc
+	Status  *a2a.TaskStatus
+	Events  chan *core.Event
+	Done    chan struct{}
 }
 
-// RegisterAgent registers a new agent with the server
-func (s *A2AServer) RegisterAgent(name string, agent core.BaseAgent, card *a2a.AgentCard) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.agents[name] = agent
-	s.agentCards[name] = card
-}
-
-// UnregisterAgent removes an agent from the server
-func (s *A2AServer) UnregisterAgent(name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.agents, name)
-	delete(s.agentCards, name)
-}
-
-// GetAgent returns an agent by name
-func (s *A2AServer) GetAgent(name string) (core.BaseAgent, bool) {
+// GetAgent returns the server's agent
+func (s *A2AServer) GetAgent() core.BaseAgent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	agent, exists := s.agents[name]
-	return agent, exists
+	return s.agent
 }
 
-// GetAgentCard returns an agent card by name
-func (s *A2AServer) GetAgentCard(name string) (*a2a.AgentCard, bool) {
+// GetAgentCard returns the server's agent card
+func (s *A2AServer) GetAgentCard() *a2a.AgentCard {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	card, exists := s.agentCards[name]
-	return card, exists
-}
-
-// ListAgents returns all registered agent names
-func (s *A2AServer) ListAgents() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var names []string
-	for name := range s.agents {
-		names = append(names, name)
-	}
-	return names
+	return s.agentCard
 }
 
 // ServeHTTP implements http.Handler for the A2A server
@@ -183,18 +154,10 @@ func (s *A2AServer) handleSendTask(ctx context.Context, params any) (interface{}
 		return nil, err
 	}
 
-	// Determine agent name from metadata or ID
-	agentName := "default"
-	if taskParams.Metadata != nil {
-		if name, ok := taskParams.Metadata["agent_name"].(string); ok {
-			agentName = name
-		}
-	}
-
-	// Get agent
-	agent, exists := s.GetAgent(agentName)
-	if !exists {
-		return nil, fmt.Errorf("agent not found: %s", agentName)
+	// Get the single agent
+	agent := s.GetAgent()
+	if agent == nil {
+		return nil, fmt.Errorf("no agent configured")
 	}
 
 	// Create task execution
@@ -205,11 +168,10 @@ func (s *A2AServer) handleSendTask(ctx context.Context, params any) (interface{}
 	}
 
 	task := &TaskExecution{
-		ID:        taskID,
-		AgentName: agentName,
-		Message:   &taskParams.Message,
-		Context:   taskCtx,
-		Cancel:    cancel,
+		ID:      taskID,
+		Message: &taskParams.Message,
+		Context: taskCtx,
+		Cancel:  cancel,
 		Status: &a2a.TaskStatus{
 			State:   a2a.TaskStateWorking,
 			Message: nil,
@@ -386,26 +348,11 @@ func (s *A2AServer) handleCancelTask(ctx context.Context, params any) (interface
 func (s *A2AServer) handleGetAgentCard(ctx context.Context, params any) (interface{}, error) {
 	// The agents/card method returns the agent's own card
 	// According to A2A spec, no parameters are needed
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// If there's only one agent card, return it
-	if len(s.agentCards) == 1 {
-		for _, card := range s.agentCards {
-			return card, nil
-		}
+	card := s.GetAgentCard()
+	if card == nil {
+		return nil, fmt.Errorf("no agent card configured")
 	}
-
-	// If there are multiple agent cards, we need to determine which one to return
-	// For now, return the first one, but ideally this should be configured
-	if len(s.agentCards) > 0 {
-		for _, card := range s.agentCards {
-			return card, nil // Return the first one
-		}
-	}
-
-	return nil, fmt.Errorf("no agent card configured")
+	return card, nil
 }
 
 // executeAgent executes the agent with the given message
@@ -413,7 +360,7 @@ func (s *A2AServer) executeAgent(task *TaskExecution, agent core.BaseAgent) {
 	defer close(task.Done)
 
 	// Convert A2A message to ADK content
-	content := s.convertA2AMessageToContent(task.Message)
+	content := a2a.ConvertA2AMessageToContent(task.Message)
 
 	// Create invocation context
 	invocationCtx := &core.InvocationContext{
@@ -450,26 +397,6 @@ func (s *A2AServer) executeAgent(task *TaskExecution, agent core.BaseAgent) {
 
 	// Mark as completed
 	task.Status.State = a2a.TaskStateCompleted
-}
-
-// convertA2AMessageToContent converts an A2A message to ADK content
-func (s *A2AServer) convertA2AMessageToContent(message *a2a.Message) *core.Content {
-	var parts []core.Part
-
-	for _, part := range message.Parts {
-		if part.Text != nil {
-			parts = append(parts, core.Part{
-				Type: "text",
-				Text: part.Text,
-			})
-		}
-		// TODO: Handle other part types (function calls, files, etc.)
-	}
-
-	return &core.Content{
-		Role:  message.Role,
-		Parts: parts,
-	}
 }
 
 // sendError sends a JSON-RPC error response

@@ -692,25 +692,8 @@ func (r *RemoteA2aAgent) convertStreamingResponseToEvent(response *a2a.SendStrea
 func (r *RemoteA2aAgent) convertTaskStatusUpdateToEvent(update *a2a.TaskStatusUpdateEvent, invocationCtx *core.InvocationContext) (*core.Event, error) {
 	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
 
-	var content *core.Content
-	if update.Status.Message != nil && len(update.Status.Message.Parts) > 0 {
-		var parts []core.Part
-		for _, part := range update.Status.Message.Parts {
-			if part.Text != nil {
-				parts = append(parts, core.Part{
-					Type: "text",
-					Text: part.Text,
-				})
-			}
-		}
-
-		if len(parts) > 0 {
-			content = &core.Content{
-				Role:  "agent",
-				Parts: parts,
-			}
-		}
-	}
+	// Convert task status to content using helper
+	content := a2a.ConvertA2ATaskStatusToContent(&update.Status)
 
 	if content == nil {
 		content = &core.Content{
@@ -737,30 +720,10 @@ func (r *RemoteA2aAgent) convertTaskStatusUpdateToEvent(update *a2a.TaskStatusUp
 func (r *RemoteA2aAgent) convertTaskArtifactUpdateToEvent(update *a2a.TaskArtifactUpdateEvent, invocationCtx *core.InvocationContext) (*core.Event, error) {
 	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
 
-	var parts []core.Part
-	for _, part := range update.Artifact.Parts {
-		if part.Text != nil {
-			parts = append(parts, core.Part{
-				Type: "text",
-				Text: part.Text,
-			})
-		}
-		// TODO: Handle other part types (files, data, etc.)
-	}
+	// Convert artifact to content using helper
+	content := a2a.ConvertA2AArtifactToContent(&update.Artifact)
 
-	if len(parts) == 0 {
-		parts = []core.Part{
-			{
-				Type: "text",
-				Text: ptr.Ptr("Artifact updated"),
-			},
-		}
-	}
-
-	event.Content = &core.Content{
-		Role:  "agent",
-		Parts: parts,
-	}
+	event.Content = content
 	event.Actions = core.EventActions{}
 	if invocationCtx.Branch != nil {
 		event.Branch = invocationCtx.Branch
@@ -798,25 +761,13 @@ func (r *RemoteA2aAgent) constructA2AMessageFromSession(invocationCtx *core.Invo
 		return nil, fmt.Errorf("no user content available")
 	}
 
-	// Create parts from user content
-	var parts []a2a.Part
+	// Generate a unique message ID
+	messageID := generateMessageID()
 
-	// Handle content parts
-	for _, part := range invocationCtx.UserContent.Parts {
-		if part.Text != nil {
-			parts = append(parts, a2a.Part{
-				Type: "text",
-				Text: part.Text,
-			})
-		}
-		// TODO: Handle other part types (function calls, files, etc.)
-	}
-
-	// Create message with required messageId field
-	message := &a2a.Message{
-		MessageID: generateMessageID(), // Required by A2A spec
-		Role:      "user",
-		Parts:     parts,
+	// Convert core content to A2A message using helper
+	message := a2a.ConvertCoreContentToA2AMessage(invocationCtx.UserContent, messageID)
+	if message == nil {
+		return nil, fmt.Errorf("failed to convert content to A2A message")
 	}
 
 	return message, nil
@@ -831,28 +782,8 @@ func generateMessageID() string {
 func (r *RemoteA2aAgent) convertA2ATaskToEvent(task *a2a.Task, invocationCtx *core.InvocationContext) (*core.Event, error) {
 	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
 
-	// Extract message from task status
-	var content *core.Content
-	if task.Status.Message != nil && len(task.Status.Message.Parts) > 0 {
-		// Convert A2A parts to ADK parts
-		var parts []core.Part
-		for _, part := range task.Status.Message.Parts {
-			if part.Text != nil {
-				parts = append(parts, core.Part{
-					Type: "text",
-					Text: part.Text,
-				})
-			}
-			// TODO: Handle other part types
-		}
-
-		if len(parts) > 0 {
-			content = &core.Content{
-				Role:  "agent",
-				Parts: parts,
-			}
-		}
-	}
+	// Convert task status to content using helper
+	content := a2a.ConvertA2ATaskStatusToContent(&task.Status)
 
 	if content == nil {
 		content = &core.Content{
