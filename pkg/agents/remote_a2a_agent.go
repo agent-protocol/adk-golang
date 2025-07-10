@@ -48,6 +48,20 @@ func (e *A2AClientError) Unwrap() error {
 	return e.cause
 }
 
+// TaskWaitingStrategy defines how to handle task completion waiting
+type TaskWaitingStrategy int
+
+const (
+	// TaskWaitingNone - Don't wait for task completion, return immediately
+	TaskWaitingNone TaskWaitingStrategy = iota
+	// TaskWaitingPoll - Poll for task completion using GetTask
+	TaskWaitingPoll
+	// TaskWaitingStream - Use streaming if supported by agent
+	TaskWaitingStream
+	// TaskWaitingAuto - Automatically choose based on agent capabilities
+	TaskWaitingAuto
+)
+
 // RemoteA2aAgentConfig holds configuration for RemoteA2aAgent
 type RemoteA2aAgentConfig struct {
 	// HTTP client timeout
@@ -56,6 +70,26 @@ type RemoteA2aAgentConfig struct {
 	HTTPClient *http.Client
 	// Additional headers for A2A requests
 	Headers map[string]string
+
+	// Task waiting configuration
+	TaskWaitingStrategy TaskWaitingStrategy
+	TaskPollingInterval time.Duration
+	TaskPollingTimeout  time.Duration
+	MaxTaskPollingTries int
+
+	// Streaming configuration
+	ForceStreaming      bool // Force streaming even if agent doesn't advertise it
+	StreamingTimeout    time.Duration
+	StreamingBufferSize int
+
+	// Retry configuration
+	MaxRetries      int
+	RetryBackoff    time.Duration
+	RetryableErrors []string // Error messages that should trigger retry
+
+	// Legacy fields for backward compatibility
+	TaskPollingEnabled bool // Whether to poll for task completion (now controlled by TaskWaitingStrategy)
+	PreferStreaming    bool // Prefer streaming over polling when agent supports it (now controlled by TaskWaitingStrategy)
 }
 
 // DefaultRemoteA2aAgentConfig returns default configuration
@@ -63,6 +97,23 @@ func DefaultRemoteA2aAgentConfig() *RemoteA2aAgentConfig {
 	return &RemoteA2aAgentConfig{
 		Timeout: 600 * time.Second, // 10 minutes
 		Headers: make(map[string]string),
+
+		TaskWaitingStrategy: TaskWaitingAuto,
+		TaskPollingInterval: 2 * time.Second,
+		TaskPollingTimeout:  300 * time.Second, // 5 minutes
+		MaxTaskPollingTries: 150,               // 5 minutes / 2 seconds
+
+		ForceStreaming:      false,
+		StreamingTimeout:    600 * time.Second, // 10 minutes
+		StreamingBufferSize: 100,
+
+		MaxRetries:      3,
+		RetryBackoff:    1 * time.Second,
+		RetryableErrors: []string{"timeout", "connection refused", "temporary failure"},
+
+		// Legacy compatibility
+		TaskPollingEnabled: true,
+		PreferStreaming:    true,
 	}
 }
 
@@ -313,21 +364,65 @@ func (r *RemoteA2aAgent) validateAgentCard(agentCard *a2a.AgentCard) error {
 	return nil
 }
 
-// RunAsync executes the agent with the given context
+// shouldUseStreaming determines if streaming should be used based on agent capabilities and config
+func (r *RemoteA2aAgent) shouldUseStreaming() bool {
+	// Force streaming if configured
+	if r.config.ForceStreaming {
+		return true
+	}
+
+	// Check if agent card is resolved and supports streaming
+	agentCard := r.GetAgentCard()
+	if agentCard == nil {
+		return false
+	}
+
+	// Check agent capabilities for streaming support
+	return agentCard.Capabilities.Streaming
+}
+
+// determineTaskWaitingStrategy determines the actual strategy to use
+func (r *RemoteA2aAgent) determineTaskWaitingStrategy() TaskWaitingStrategy {
+	switch r.config.TaskWaitingStrategy {
+	case TaskWaitingAuto:
+		if r.shouldUseStreaming() {
+			return TaskWaitingStream
+		}
+		return TaskWaitingPoll
+	default:
+		return r.config.TaskWaitingStrategy
+	}
+}
+
+// RunAsync executes the agent with enhanced task waiting capabilities
 func (r *RemoteA2aAgent) RunAsync(invocationCtx *core.InvocationContext) (core.EventStream, error) {
 	// Ensure agent is resolved
 	if err := r.ensureResolved(invocationCtx); err != nil {
 		return nil, err
 	}
 
-	// Create a channel for events
-	eventChan := make(chan *core.Event, 1)
+	strategy := r.determineTaskWaitingStrategy()
 
-	// Start a goroutine to handle the A2A request
+	switch strategy {
+	case TaskWaitingStream:
+		return r.runWithStreaming(invocationCtx)
+	case TaskWaitingPoll:
+		return r.runWithPolling(invocationCtx)
+	case TaskWaitingNone:
+		return r.runWithMessageSend(invocationCtx)
+	default:
+		return nil, fmt.Errorf("unsupported task waiting strategy: %v", strategy)
+	}
+}
+
+// runWithStreaming executes the agent using streaming
+func (r *RemoteA2aAgent) runWithStreaming(invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	eventChan := make(chan *core.Event, r.config.StreamingBufferSize)
+
 	go func() {
 		defer close(eventChan)
 
-		// Check for cancellation before starting
+		// Check for cancellation
 		select {
 		case <-invocationCtx.Done():
 			return
@@ -337,101 +432,364 @@ func (r *RemoteA2aAgent) RunAsync(invocationCtx *core.InvocationContext) (core.E
 		// Convert session events to A2A message
 		message, err := r.constructA2AMessageFromSession(invocationCtx)
 		if err != nil {
-			event := core.NewEvent(invocationCtx.InvocationID, r.Name())
-			event.Content = &core.Content{
-				Role: "agent",
-				Parts: []core.Part{
-					{
-						Type: "text",
-						Text: ptr.Ptr(fmt.Sprintf("Error constructing A2A message: %v", err)),
-					},
-				},
-			}
-			event.Actions = core.EventActions{}
-			if invocationCtx.Branch != nil {
-				event.Branch = invocationCtx.Branch
-			}
-
-			select {
-			case eventChan <- event:
-			case <-invocationCtx.Done():
-				return
-			}
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Error constructing A2A message: %v", err))
 			return
 		}
 
-		// Check for cancellation before network call
-		select {
-		case <-invocationCtx.Done():
-			return
-		default:
-		}
-
-		// Send message to remote agent
-		taskParams := &a2a.TaskSendParams{
-			ID:      generateTaskID(),
+		// Prepare streaming request
+		messageSendParams := &a2a.MessageSendParams{
 			Message: *message,
+			Configuration: &a2a.MessageSendConfiguration{
+				AcceptedOutputModes: []string{"text"},
+			},
 		}
 
-		task, err := r.a2aClient.SendMessage(invocationCtx, taskParams)
-		if err != nil {
-			event := core.NewEvent(invocationCtx.InvocationID, r.Name())
-			event.Content = &core.Content{
-				Role: "agent",
-				Parts: []core.Part{
-					{
-						Type: "text",
-						Text: ptr.Ptr(fmt.Sprintf("Error sending message to remote agent: %v", err)),
-					},
-				},
+		// Use streaming timeout context
+		streamCtx, cancel := context.WithTimeout(invocationCtx, r.config.StreamingTimeout)
+		defer cancel()
+
+		// Handle streaming events
+		eventHandler := func(response *a2a.SendStreamingMessageResponse) error {
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			default:
 			}
-			event.Actions = core.EventActions{}
-			if invocationCtx.Branch != nil {
-				event.Branch = invocationCtx.Branch
+
+			event, err := r.convertStreamingResponseToEvent(response, invocationCtx)
+			if err != nil {
+				return fmt.Errorf("failed to convert streaming response: %w", err)
 			}
 
 			select {
 			case eventChan <- event:
-			case <-invocationCtx.Done():
-				return
+			case <-streamCtx.Done():
+				return streamCtx.Err()
 			}
-			return
+
+			// Check if this is the final event
+			if response.Final != nil && *response.Final {
+				return nil // Stop streaming
+			}
+
+			return nil
 		}
 
-		// Check for cancellation before processing response
-		select {
-		case <-invocationCtx.Done():
-			return
-		default:
+		// Send streaming message
+		if err := r.a2aClient.SendMessageStream(streamCtx, messageSendParams, eventHandler); err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Streaming failed: %v", err))
 		}
+	}()
 
-		// Convert A2A task to event
-		event, err := r.convertA2ATaskToEvent(task, invocationCtx)
+	return eventChan, nil
+}
+
+// runWithPolling executes the agent using task polling
+func (r *RemoteA2aAgent) runWithPolling(invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	eventChan := make(chan *core.Event, 10)
+
+	go func() {
+		defer close(eventChan)
+
+		// Send initial message and get task
+		task, err := r.sendInitialMessage(invocationCtx)
 		if err != nil {
-			event = core.NewEvent(invocationCtx.InvocationID, r.Name())
-			event.Content = &core.Content{
-				Role: "agent",
-				Parts: []core.Part{
-					{
-						Type: "text",
-						Text: ptr.Ptr(fmt.Sprintf("Error converting A2A response: %v", err)),
-					},
-				},
-			}
-			event.Actions = core.EventActions{}
-			if invocationCtx.Branch != nil {
-				event.Branch = invocationCtx.Branch
-			}
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Failed to send initial message: %v", err))
+			return
+		}
+
+		// Start task polling
+		finalTask, err := r.pollForTaskCompletion(invocationCtx, task.ID)
+		if err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Task polling failed: %v", err))
+			return
+		}
+
+		// Convert final task to event
+		event, err := r.convertA2ATaskToEvent(finalTask, invocationCtx)
+		if err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Failed to convert final task: %v", err))
+			return
 		}
 
 		select {
 		case eventChan <- event:
 		case <-invocationCtx.Done():
-			return
 		}
 	}()
 
 	return eventChan, nil
+}
+
+// sendInitialMessage sends the initial message and returns the task
+func (r *RemoteA2aAgent) sendInitialMessage(invocationCtx *core.InvocationContext) (*a2a.Task, error) {
+	message, err := r.constructA2AMessageFromSession(invocationCtx)
+	if err != nil {
+		return nil, fmt.Errorf("error constructing message: %w", err)
+	}
+
+	messageSendParams := &a2a.MessageSendParams{
+		Message: *message,
+		Configuration: &a2a.MessageSendConfiguration{
+			AcceptedOutputModes: []string{"text"},
+		},
+	}
+
+	return r.a2aClient.SendMessage(invocationCtx, messageSendParams)
+}
+
+// runWithMessageSend executes using standard message sending without polling
+func (r *RemoteA2aAgent) runWithMessageSend(invocationCtx *core.InvocationContext) (core.EventStream, error) {
+	eventChan := make(chan *core.Event, 1)
+
+	go func() {
+		defer close(eventChan)
+
+		// Convert session events to A2A message
+		message, err := r.constructA2AMessageFromSession(invocationCtx)
+		if err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Error constructing A2A message: %v", err))
+			return
+		}
+
+		// Send message to remote agent
+		messageSendParams := &a2a.MessageSendParams{
+			Message: *message,
+			Configuration: &a2a.MessageSendConfiguration{
+				AcceptedOutputModes: []string{"text"},
+			},
+		}
+
+		task, err := r.a2aClient.SendMessage(invocationCtx, messageSendParams)
+		if err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Error sending message to remote agent: %v", err))
+			return
+		}
+
+		// Convert task to event
+		event, err := r.convertA2ATaskToEvent(task, invocationCtx)
+		if err != nil {
+			r.sendErrorEvent(eventChan, invocationCtx, fmt.Sprintf("Error converting A2A response: %v", err))
+			return
+		}
+
+		select {
+		case eventChan <- event:
+		case <-invocationCtx.Done():
+		}
+	}()
+
+	return eventChan, nil
+}
+
+// pollForTaskCompletion polls for task completion with exponential backoff
+func (r *RemoteA2aAgent) pollForTaskCompletion(ctx context.Context, taskID string) (*a2a.Task, error) {
+	pollCtx, cancel := context.WithTimeout(ctx, r.config.TaskPollingTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(r.config.TaskPollingInterval)
+	defer ticker.Stop()
+
+	tries := 0
+	for {
+		select {
+		case <-pollCtx.Done():
+			return nil, fmt.Errorf("task polling timeout after %v", r.config.TaskPollingTimeout)
+		case <-ticker.C:
+			tries++
+			if tries > r.config.MaxTaskPollingTries {
+				return nil, fmt.Errorf("exceeded maximum polling tries (%d)", r.config.MaxTaskPollingTries)
+			}
+
+			task, err := r.getTaskStatus(pollCtx, taskID)
+			if err != nil {
+				// Check if this is a retryable error
+				if r.isRetryableError(err) && tries < r.config.MaxRetries {
+					time.Sleep(r.config.RetryBackoff)
+					continue
+				}
+				return nil, fmt.Errorf("failed to get task status: %w", err)
+			}
+
+			// Check if task is in terminal state
+			if r.isTerminalTaskState(task.Status.State) {
+				return task, nil
+			}
+
+			// Log task progress for debugging
+			if task.Status.Message != nil && len(task.Status.Message.Parts) > 0 {
+				if task.Status.Message.Parts[0].Text != nil {
+					fmt.Printf("Task %s status: %s - %s\n", taskID, task.Status.State, *task.Status.Message.Parts[0].Text)
+				}
+			}
+		}
+	}
+}
+
+// getTaskStatus retrieves the current status of a task
+func (r *RemoteA2aAgent) getTaskStatus(ctx context.Context, taskID string) (*a2a.Task, error) {
+	params := &a2a.TaskQueryParams{
+		ID: taskID,
+	}
+	return r.a2aClient.GetTask(ctx, params)
+}
+
+// isTerminalTaskState checks if a task state is terminal (final)
+func (r *RemoteA2aAgent) isTerminalTaskState(state a2a.TaskState) bool {
+	switch state {
+	case a2a.TaskStateCompleted, a2a.TaskStateFailed, a2a.TaskStateCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+// isRetryableError checks if an error should trigger a retry
+func (r *RemoteA2aAgent) isRetryableError(err error) bool {
+	errStr := err.Error()
+	for _, retryableErr := range r.config.RetryableErrors {
+		if fmt.Sprintf("%v", errStr) == retryableErr {
+			return true
+		}
+	}
+	return false
+}
+
+// convertStreamingResponseToEvent converts a streaming response to an ADK event
+func (r *RemoteA2aAgent) convertStreamingResponseToEvent(response *a2a.SendStreamingMessageResponse, invocationCtx *core.InvocationContext) (*core.Event, error) {
+	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
+
+	// Handle different result types
+	switch result := response.Result.(type) {
+	case *a2a.Task:
+		return r.convertA2ATaskToEvent(result, invocationCtx)
+	case *a2a.TaskStatusUpdateEvent:
+		return r.convertTaskStatusUpdateToEvent(result, invocationCtx)
+	case *a2a.TaskArtifactUpdateEvent:
+		return r.convertTaskArtifactUpdateToEvent(result, invocationCtx)
+	default:
+		// Handle as generic response
+		event.Content = &core.Content{
+			Role: "agent",
+			Parts: []core.Part{
+				{
+					Type: "text",
+					Text: ptr.Ptr(fmt.Sprintf("Streaming update: %v", result)),
+				},
+			},
+		}
+	}
+
+	event.Actions = core.EventActions{}
+	if invocationCtx.Branch != nil {
+		event.Branch = invocationCtx.Branch
+	}
+
+	return event, nil
+}
+
+// convertTaskStatusUpdateToEvent converts a task status update to an ADK event
+func (r *RemoteA2aAgent) convertTaskStatusUpdateToEvent(update *a2a.TaskStatusUpdateEvent, invocationCtx *core.InvocationContext) (*core.Event, error) {
+	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
+
+	var content *core.Content
+	if update.Status.Message != nil && len(update.Status.Message.Parts) > 0 {
+		var parts []core.Part
+		for _, part := range update.Status.Message.Parts {
+			if part.Text != nil {
+				parts = append(parts, core.Part{
+					Type: "text",
+					Text: part.Text,
+				})
+			}
+		}
+
+		if len(parts) > 0 {
+			content = &core.Content{
+				Role:  "agent",
+				Parts: parts,
+			}
+		}
+	}
+
+	if content == nil {
+		content = &core.Content{
+			Role: "agent",
+			Parts: []core.Part{
+				{
+					Type: "text",
+					Text: ptr.Ptr(fmt.Sprintf("Task status: %s", update.Status.State)),
+				},
+			},
+		}
+	}
+
+	event.Content = content
+	event.Actions = core.EventActions{}
+	if invocationCtx.Branch != nil {
+		event.Branch = invocationCtx.Branch
+	}
+
+	return event, nil
+}
+
+// convertTaskArtifactUpdateToEvent converts a task artifact update to an ADK event
+func (r *RemoteA2aAgent) convertTaskArtifactUpdateToEvent(update *a2a.TaskArtifactUpdateEvent, invocationCtx *core.InvocationContext) (*core.Event, error) {
+	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
+
+	var parts []core.Part
+	for _, part := range update.Artifact.Parts {
+		if part.Text != nil {
+			parts = append(parts, core.Part{
+				Type: "text",
+				Text: part.Text,
+			})
+		}
+		// TODO: Handle other part types (files, data, etc.)
+	}
+
+	if len(parts) == 0 {
+		parts = []core.Part{
+			{
+				Type: "text",
+				Text: ptr.Ptr("Artifact updated"),
+			},
+		}
+	}
+
+	event.Content = &core.Content{
+		Role:  "agent",
+		Parts: parts,
+	}
+	event.Actions = core.EventActions{}
+	if invocationCtx.Branch != nil {
+		event.Branch = invocationCtx.Branch
+	}
+
+	return event, nil
+}
+
+// sendErrorEvent sends an error event to the event channel
+func (r *RemoteA2aAgent) sendErrorEvent(eventChan chan<- *core.Event, invocationCtx *core.InvocationContext, errorMsg string) {
+	event := core.NewEvent(invocationCtx.InvocationID, r.Name())
+	event.Content = &core.Content{
+		Role: "agent",
+		Parts: []core.Part{
+			{
+				Type: "text",
+				Text: ptr.Ptr(errorMsg),
+			},
+		},
+	}
+	event.Actions = core.EventActions{}
+	if invocationCtx.Branch != nil {
+		event.Branch = invocationCtx.Branch
+	}
+
+	select {
+	case eventChan <- event:
+	case <-invocationCtx.Done():
+	}
 }
 
 // constructA2AMessageFromSession constructs an A2A message from the session context
@@ -454,13 +812,19 @@ func (r *RemoteA2aAgent) constructA2AMessageFromSession(invocationCtx *core.Invo
 		// TODO: Handle other part types (function calls, files, etc.)
 	}
 
-	// Create message
+	// Create message with required messageId field
 	message := &a2a.Message{
-		Role:  "user",
-		Parts: parts,
+		MessageID: generateMessageID(), // Required by A2A spec
+		Role:      "user",
+		Parts:     parts,
 	}
 
 	return message, nil
+}
+
+// generateMessageID generates a unique message ID for A2A protocol
+func generateMessageID() string {
+	return fmt.Sprintf("msg_%d", time.Now().UnixNano())
 }
 
 // convertA2ATaskToEvent converts an A2A task response to an ADK event
@@ -519,11 +883,6 @@ func (r *RemoteA2aAgent) Close() error {
 	return nil
 }
 
-// generateTaskID generates a unique task ID
-func generateTaskID() string {
-	return fmt.Sprintf("task_%d", time.Now().UnixNano())
-}
-
 // GetAgentCard returns the resolved agent card (if available)
 func (r *RemoteA2aAgent) GetAgentCard() *a2a.AgentCard {
 	return r.agentCard
@@ -537,4 +896,29 @@ func (r *RemoteA2aAgent) GetRPCURL() string {
 // IsResolved returns whether the agent has been resolved
 func (r *RemoteA2aAgent) IsResolved() bool {
 	return r.isResolved
+}
+
+// EnsureResolved ensures the agent is resolved (public method for external use)
+func (r *RemoteA2aAgent) EnsureResolved(ctx context.Context) error {
+	return r.ensureResolved(ctx)
+}
+
+// GetConfig returns the configuration
+func (r *RemoteA2aAgent) GetConfig() *RemoteA2aAgentConfig {
+	return r.config
+}
+
+// SetTaskWaitingStrategy updates the task waiting strategy
+func (r *RemoteA2aAgent) SetTaskWaitingStrategy(strategy TaskWaitingStrategy) {
+	r.config.TaskWaitingStrategy = strategy
+}
+
+// SetTaskPollingTimeout updates the task polling timeout
+func (r *RemoteA2aAgent) SetTaskPollingTimeout(timeout time.Duration) {
+	r.config.TaskPollingTimeout = timeout
+}
+
+// SetTaskPollingInterval updates the task polling interval
+func (r *RemoteA2aAgent) SetTaskPollingInterval(interval time.Duration) {
+	r.config.TaskPollingInterval = interval
 }

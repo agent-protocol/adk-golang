@@ -1,4 +1,4 @@
-module llm_agent
+module remote_a2a_agent
 
 go 1.24.0
 

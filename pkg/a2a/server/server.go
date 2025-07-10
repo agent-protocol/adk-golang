@@ -149,14 +149,22 @@ func (s *A2AServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleJSONRPCRequest handles a JSON-RPC request
 func (s *A2AServer) handleJSONRPCRequest(ctx context.Context, request *a2a.JSONRPCRequest) (interface{}, error) {
 	switch request.Method {
-	case "tasks/send":
-		return s.handleSendTask(ctx, request.Params)
+	// A2A-compliant method names
+	case "message/send":
+		return s.handleSendMessage(ctx, request.Params)
+	case "message/stream":
+		return s.handleStreamMessage(ctx, request.Params)
 	case "tasks/get":
 		return s.handleGetTask(ctx, request.Params)
 	case "tasks/cancel":
 		return s.handleCancelTask(ctx, request.Params)
 	case "agents/card":
 		return s.handleGetAgentCard(ctx, request.Params)
+	// Legacy method names for backward compatibility
+	case "tasks/send":
+		return s.handleSendTask(ctx, request.Params)
+	case "tasks/sendSubscribe":
+		return s.handleSendTaskStreaming(ctx, request.Params)
 	default:
 		return nil, fmt.Errorf("method not found: %s", request.Method)
 	}
@@ -226,6 +234,91 @@ func (s *A2AServer) handleSendTask(ctx context.Context, params any) (interface{}
 	}, nil
 }
 
+// handleSendMessage handles the A2A-compliant message/send method
+func (s *A2AServer) handleSendMessage(ctx context.Context, params any) (interface{}, error) {
+	// Parse parameters as MessageSendParams
+	paramBytes, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	var messageSendParams a2a.MessageSendParams
+	if err := json.Unmarshal(paramBytes, &messageSendParams); err != nil {
+		return nil, err
+	}
+
+	// Validate required messageId
+	if messageSendParams.Message.MessageID == "" {
+		return nil, fmt.Errorf("messageId is required in message")
+	}
+
+	// Convert MessageSendParams to TaskSendParams for internal processing
+	taskParams := s.convertMessageSendParamsToTaskSendParams(&messageSendParams)
+
+	// Use existing task sending logic
+	return s.handleSendTask(ctx, taskParams)
+}
+
+// handleStreamMessage handles the A2A-compliant message/stream method
+func (s *A2AServer) handleStreamMessage(ctx context.Context, params any) (interface{}, error) {
+	// Parse parameters as MessageSendParams (same as message/send)
+	paramBytes, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	var messageSendParams a2a.MessageSendParams
+	if err := json.Unmarshal(paramBytes, &messageSendParams); err != nil {
+		return nil, err
+	}
+
+	// Validate required messageId
+	if messageSendParams.Message.MessageID == "" {
+		return nil, fmt.Errorf("messageId is required in message")
+	}
+
+	// Convert MessageSendParams to TaskSendParams for internal processing
+	taskParams := s.convertMessageSendParamsToTaskSendParams(&messageSendParams)
+
+	// For streaming, we would typically handle this differently
+	// For now, delegate to the task sending logic
+	// TODO: Implement actual streaming response with SSE
+	return s.handleSendTask(ctx, taskParams)
+}
+
+// convertMessageSendParamsToTaskSendParams converts A2A MessageSendParams to legacy TaskSendParams
+func (s *A2AServer) convertMessageSendParamsToTaskSendParams(msgParams *a2a.MessageSendParams) *a2a.TaskSendParams {
+	// Generate task ID from message ID or create new one
+	taskID := ""
+	if msgParams.Message.TaskID != nil {
+		taskID = *msgParams.Message.TaskID
+	}
+	if taskID == "" {
+		taskID = generateTaskID()
+	}
+
+	taskParams := &a2a.TaskSendParams{
+		ID:       taskID,
+		Message:  msgParams.Message,
+		Metadata: msgParams.Metadata,
+	}
+
+	// Convert configuration options if present
+	if msgParams.Configuration != nil {
+		taskParams.HistoryLength = msgParams.Configuration.HistoryLength
+		taskParams.PushNotification = msgParams.Configuration.PushNotificationConfig
+	}
+
+	return taskParams
+}
+
+// handleSendTaskStreaming handles the legacy tasks/sendSubscribe method
+func (s *A2AServer) handleSendTaskStreaming(ctx context.Context, params any) (interface{}, error) {
+	// For legacy compatibility, delegate to handleSendTask
+	// TODO: Implement actual streaming response with SSE
+	return s.handleSendTask(ctx, params)
+}
+
 // handleGetTask handles the tasks/get method
 func (s *A2AServer) handleGetTask(ctx context.Context, params any) (interface{}, error) {
 	// Parse parameters
@@ -291,25 +384,28 @@ func (s *A2AServer) handleCancelTask(ctx context.Context, params any) (interface
 
 // handleGetAgentCard handles the agents/card method
 func (s *A2AServer) handleGetAgentCard(ctx context.Context, params any) (interface{}, error) {
-	// Parse parameters
-	paramBytes, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
+	// The agents/card method returns the agent's own card
+	// According to A2A spec, no parameters are needed
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// If there's only one agent card, return it
+	if len(s.agentCards) == 1 {
+		for _, card := range s.agentCards {
+			return card, nil
+		}
 	}
 
-	var request a2a.GetAgentCardRequest
-	if err := json.Unmarshal(paramBytes, &request); err != nil {
-		return nil, err
+	// If there are multiple agent cards, we need to determine which one to return
+	// For now, return the first one, but ideally this should be configured
+	if len(s.agentCards) > 0 {
+		for _, card := range s.agentCards {
+			return card, nil // Return the first one
+		}
 	}
 
-	card, exists := s.GetAgentCard(request.AgentName)
-	if !exists {
-		return nil, fmt.Errorf("agent card not found: %s", request.AgentName)
-	}
-
-	return &a2a.GetAgentCardResponse{
-		AgentCard: *card,
-	}, nil
+	return nil, fmt.Errorf("no agent card configured")
 }
 
 // executeAgent executes the agent with the given message

@@ -86,6 +86,22 @@ type CancelTaskResponse struct {
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
+// GetAgentCardRequest represents a request to get an agent card.
+type GetAgentCardRequest struct {
+	JSONRPC string `json:"jsonrpc"` // "2.0"
+	ID      any    `json:"id,omitempty"`
+	Method  string `json:"method"`           // "agents/card"
+	Params  any    `json:"params,omitempty"` // Usually empty for agent's own card
+}
+
+// GetAgentCardResponse represents the response containing an agent card.
+type GetAgentCardResponse struct {
+	JSONRPC string        `json:"jsonrpc,omitempty"` // "2.0"
+	ID      any           `json:"id"`
+	Result  *AgentCard    `json:"result,omitempty"`
+	Error   *JSONRPCError `json:"error,omitempty"`
+}
+
 // DataPart represents a structured data part of a message or artifact.
 type DataPart struct {
 	Type     string         `json:"type"` // "data"
@@ -172,10 +188,29 @@ type JSONRPCResponse struct {
 }
 
 // Message represents a single message in a task conversation.
+// Updated to match A2A specification with required messageId field.
 type Message struct {
-	Role     string         `json:"role"`  // "user" or "agent"
-	Parts    []Part         `json:"parts"` // Part is a union type
-	Metadata map[string]any `json:"metadata,omitempty"`
+	MessageID string         `json:"messageId"` // REQUIRED by A2A spec
+	Role      string         `json:"role"`      // "user" or "agent"
+	Parts     []Part         `json:"parts"`     // Part is a union type
+	TaskID    *string        `json:"taskId,omitempty"`
+	ContextID *string        `json:"contextId,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+// MessageSendParams represents parameters for message/send and message/stream methods (A2A spec)
+type MessageSendParams struct {
+	Message       Message                   `json:"message"` // REQUIRED
+	Configuration *MessageSendConfiguration `json:"configuration,omitempty"`
+	Metadata      map[string]any            `json:"metadata,omitempty"`
+}
+
+// MessageSendConfiguration represents optional configuration for message sending (A2A spec)
+type MessageSendConfiguration struct {
+	AcceptedOutputModes    []string                `json:"acceptedOutputModes"` // REQUIRED when present
+	Blocking               *bool                   `json:"blocking,omitempty"`
+	HistoryLength          *int                    `json:"historyLength,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"pushNotificationConfig,omitempty"`
 }
 
 // PushNotificationConfig defines the configuration for push notifications.
@@ -232,11 +267,53 @@ func (p *Part) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ============================================================================
+// A2A Protocol Request Types (Correct Method Names)
+// ============================================================================
+
+// SendMessageRequest represents the "message/send" JSON-RPC request (A2A compliant)
+type SendMessageRequest struct {
+	JSONRPC string            `json:"jsonrpc"` // "2.0"
+	ID      any               `json:"id,omitempty"`
+	Method  string            `json:"method"` // "message/send"
+	Params  MessageSendParams `json:"params"`
+}
+
+// SendMessageResponse represents response from "message/send"
+type SendMessageResponse struct {
+	JSONRPC string        `json:"jsonrpc,omitempty"` // "2.0"
+	ID      any           `json:"id"`
+	Result  any           `json:"result,omitempty"` // Task | Message
+	Error   *JSONRPCError `json:"error,omitempty"`
+}
+
+// SendStreamingMessageRequest represents the "message/stream" JSON-RPC request (A2A compliant)
+type SendStreamingMessageRequest struct {
+	JSONRPC string            `json:"jsonrpc"` // "2.0"
+	ID      any               `json:"id,omitempty"`
+	Method  string            `json:"method"` // "message/stream"
+	Params  MessageSendParams `json:"params"` // Same as SendMessageRequest
+}
+
+// SendStreamingMessageResponse represents response/events from "message/stream"
+type SendStreamingMessageResponse struct {
+	JSONRPC string        `json:"jsonrpc,omitempty"` // "2.0"
+	ID      any           `json:"id"`
+	Result  any           `json:"result,omitempty"` // Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent
+	Error   *JSONRPCError `json:"error,omitempty"`
+	Final   *bool         `json:"final,omitempty"` // Indicates final event in stream
+}
+
+// ============================================================================
+// Legacy Task-based Types (for backward compatibility if needed)
+// ============================================================================
+
 // SendTaskRequest is a JSON-RPC request to send a message/start a task.
+// DEPRECATED: Use SendMessageRequest with "message/send" method instead
 type SendTaskRequest struct {
 	JSONRPC string         `json:"jsonrpc"` // "2.0"
 	ID      any            `json:"id,omitempty"`
-	Method  string         `json:"method"` // "tasks/send"
+	Method  string         `json:"method"` // "tasks/send" - INCORRECT per A2A spec
 	Params  TaskSendParams `json:"params"`
 }
 
