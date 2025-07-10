@@ -28,6 +28,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.BaseAgent = (*SequentialAgent)(nil)
+
 // SequentialAgentConfig contains configuration options for SequentialAgent.
 type SequentialAgentConfig struct {
 	// MaxRounds specifies the maximum number of conversation rounds
@@ -70,7 +72,7 @@ func NewSequentialAgent(name, description string, agents []core.BaseAgent, maxRo
 	}
 
 	agent := &SequentialAgent{
-		CustomAgent: NewBaseAgent(name, description),
+		CustomAgent: NewCustomAgent(name, description),
 		config:      config,
 		agents:      agents,
 	}
@@ -93,7 +95,7 @@ func NewSequentialAgentWithConfig(name, description string, agents []core.BaseAg
 	}
 
 	agent := &SequentialAgent{
-		CustomAgent: NewBaseAgent(name, description),
+		CustomAgent: NewCustomAgent(name, description),
 		config:      config,
 		agents:      agents,
 	}

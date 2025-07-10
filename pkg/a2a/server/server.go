@@ -74,7 +74,9 @@ func (s *A2AServer) GetAgent() core.BaseAgent {
 func (s *A2AServer) GetAgentCard() *a2a.AgentCard {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.agentCard
+	agentCard := s.agentCard
+	agentCard.Capabilities.Streaming = false // since we do not support streaming for now
+	return agentCard
 }
 
 // ServeHTTP implements http.Handler for the A2A server
@@ -120,6 +122,8 @@ func (s *A2AServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleJSONRPCRequest handles a JSON-RPC request
 func (s *A2AServer) handleJSONRPCRequest(ctx context.Context, request *a2a.JSONRPCRequest) (interface{}, error) {
 	switch request.Method {
+	case "agents/card":
+		return s.handleGetAgentCard(ctx, request.Params)
 	// A2A-compliant method names
 	case "message/send":
 		return s.handleSendMessage(ctx, request.Params)
@@ -129,13 +133,24 @@ func (s *A2AServer) handleJSONRPCRequest(ctx context.Context, request *a2a.JSONR
 		return s.handleGetTask(ctx, request.Params)
 	case "tasks/cancel":
 		return s.handleCancelTask(ctx, request.Params)
-	case "agents/card":
-		return s.handleGetAgentCard(ctx, request.Params)
-	// Legacy method names for backward compatibility
-	case "tasks/send":
-		return s.handleSendTask(ctx, request.Params)
-	case "tasks/sendSubscribe":
-		return s.handleSendTaskStreaming(ctx, request.Params)
+	case "tasks/pushNotificationConfig/set":
+		// These methods are not implemented in the A2A server
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
+
+	case "tasks/pushNotificationConfig/get":
+		// These methods are not implemented in the A2A server
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
+	case "tasks/pushNotificationConfig/list":
+		// These methods are not implemented in the A2A server
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
+	case "tasks/pushNotificationConfig/delete":
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
+	case "tasks/resubscribe":
+		// This method is not implemented in the A2A server
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
+	case "agent/authenticatedExtendedCard":
+		// This method is not implemented in the A2A server
+		return nil, fmt.Errorf("method not implemented: %s", request.Method)
 	default:
 		return nil, fmt.Errorf("method not found: %s", request.Method)
 	}
@@ -190,7 +205,7 @@ func (s *A2AServer) handleSendTask(ctx context.Context, params any) (interface{}
 
 	return &a2a.Task{
 		ID:        taskID,
-		SessionID: taskParams.SessionID,
+		ContextID: taskParams.SessionID,
 		Status:    *task.Status,
 		Metadata:  taskParams.Metadata,
 	}, nil

@@ -25,6 +25,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.BaseAgent = (*LLMAgent)(nil)
+
 // formatContent formats Content for logging, showing actual text instead of pointers
 func formatContent(content *core.Content) string {
 	if content == nil {
@@ -112,7 +114,7 @@ func NewLLMAgent(name, description string, config *LlmAgentConfig) *LLMAgent {
 	}
 
 	agent := &LLMAgent{
-		CustomAgent: NewBaseAgent(name, description),
+		CustomAgent: NewCustomAgent(name, description),
 		config:      config,
 		tools:       make([]core.BaseTool, 0),
 		toolMap:     make(map[string]core.BaseTool),

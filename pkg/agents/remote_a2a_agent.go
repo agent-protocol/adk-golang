@@ -14,6 +14,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.BaseAgent = (*RemoteA2aAgent)(nil)
+
 // AgentCardResolutionError is raised when agent card resolution fails
 type AgentCardResolutionError struct {
 	message string
@@ -178,7 +180,7 @@ func NewRemoteA2aAgent(name string, agentCardSource AgentCardSource, config *Rem
 	}
 
 	return &RemoteA2aAgent{
-		CustomAgent:     NewBaseAgent(name, ""),
+		CustomAgent:     NewCustomAgent(name, ""),
 		config:          config,
 		agentCardSource: agentCardSource,
 		isResolved:      false,

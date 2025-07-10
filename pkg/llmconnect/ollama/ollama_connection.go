@@ -14,6 +14,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.LLMConnection = (*OllamaConnection)(nil)
+
 // OllamaConnection implements the LLMConnection interface for Ollama.
 type OllamaConnection struct {
 	baseURL    string

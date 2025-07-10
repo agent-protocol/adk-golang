@@ -254,7 +254,6 @@ func ConvertA2AArtifactToContent(artifact *Artifact) *core.Content {
 				Metadata: map[string]any{
 					"artifact_name":        artifact.Name,
 					"artifact_description": artifact.Description,
-					"artifact_index":       artifact.Index,
 				},
 			},
 		}

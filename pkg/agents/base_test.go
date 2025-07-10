@@ -25,7 +25,7 @@ func TestBaseAgentInterface(t *testing.T) {
 	}
 
 	// Create a base agent
-	agent := NewBaseAgent("test_agent", "A test agent")
+	agent := NewCustomAgent("test_agent", "A test agent")
 	agent.SetInstruction("Test instruction")
 
 	// Test basic properties
@@ -42,7 +42,7 @@ func TestBaseAgentInterface(t *testing.T) {
 	}
 
 	// Test agent hierarchy
-	subAgent := NewBaseAgent("sub_agent", "A sub agent")
+	subAgent := NewCustomAgent("sub_agent", "A sub agent")
 	agent.AddSubAgent(subAgent)
 
 	if len(agent.SubAgents()) != 1 {
@@ -133,7 +133,7 @@ func TestInvocationContext(t *testing.T) {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	agent := NewBaseAgent("test_agent", "A test agent")
+	agent := NewCustomAgent("test_agent", "A test agent")
 
 	// Test InvocationContext creation
 	invocationCtx := core.NewInvocationContext(
@@ -211,7 +211,7 @@ func TestInvocationContext(t *testing.T) {
 	}
 
 	// Test CreateSubContext
-	subAgent := NewBaseAgent("sub_agent", "A sub agent")
+	subAgent := NewCustomAgent("sub_agent", "A sub agent")
 	subCtx := invocationCtx.CreateSubContext(subAgent, "sub_branch")
 
 	if subCtx.Agent != subAgent {
@@ -236,7 +236,7 @@ func TestAgentCallbacks(t *testing.T) {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	agent := NewBaseAgent("callback_agent", "Agent with callbacks")
+	agent := NewCustomAgent("callback_agent", "Agent with callbacks")
 
 	beforeCalled := false
 	afterCalled := false
@@ -282,8 +282,8 @@ func TestAgentCallbacks(t *testing.T) {
 func TestAgentCleanup(t *testing.T) {
 	ctx := context.Background()
 
-	parentAgent := NewBaseAgent("parent", "Parent agent")
-	subAgent := NewBaseAgent("sub", "Sub agent")
+	parentAgent := NewCustomAgent("parent", "Parent agent")
+	subAgent := NewCustomAgent("sub", "Sub agent")
 
 	parentAgent.AddSubAgent(subAgent)
 

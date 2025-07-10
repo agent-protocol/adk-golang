@@ -15,6 +15,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
+var _ core.SessionService = (*FileSessionService)(nil)
+
 // FileSessionService implements SessionService using file-based storage.
 type FileSessionService struct {
 	baseDir    string

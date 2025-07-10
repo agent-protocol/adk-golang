@@ -53,21 +53,18 @@ type AgentSkill struct {
 
 // Artifact represents a piece of data generated or used by a task.
 type Artifact struct {
+	ArtifactId  string         `json:"artifactId"`
 	Name        *string        `json:"name,omitempty"`
 	Description *string        `json:"description,omitempty"`
 	Parts       []Part         `json:"parts"` // Part is a union type, using any or specific struct with Type field
-	Index       int            `json:"index,omitempty"`
-	Append      *bool          `json:"append,omitempty"`
-	LastChunk   *bool          `json:"lastChunk,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
+	Extensions  []string       `json:"extensions,omitempty"`
 }
 
-// AuthenticationInfo holds authentication details.
-type AuthenticationInfo struct {
+// PushNotificationAuthenticationInfo holds authentication details.
+type PushNotificationAuthenticationInfo struct {
 	Schemes     []string `json:"schemes"`
 	Credentials *string  `json:"credentials,omitempty"`
-	// Note: additionalProperties: {} allows arbitrary fields, not directly mapped in Go struct easily.
-	// Consider using map[string]any or custom marshaling if needed.
 }
 
 // CancelTaskRequest is a JSON-RPC request to cancel a task.
@@ -188,14 +185,16 @@ type JSONRPCResponse struct {
 }
 
 // Message represents a single message in a task conversation.
-// Updated to match A2A specification with required messageId field.
 type Message struct {
-	MessageID string         `json:"messageId"` // REQUIRED by A2A spec
-	Role      string         `json:"role"`      // "user" or "agent"
-	Parts     []Part         `json:"parts"`     // Part is a union type
-	TaskID    *string        `json:"taskId,omitempty"`
-	ContextID *string        `json:"contextId,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	Kind             string         `json:"kind"`      // "message"
+	MessageID        string         `json:"messageId"` // REQUIRED by A2A spec
+	TaskID           *string        `json:"taskId,omitempty"`
+	ContextID        *string        `json:"contextId,omitempty"`
+	Role             string         `json:"role"`  // "user" or "agent"
+	Parts            []Part         `json:"parts"` // Part is a union type
+	Metadata         map[string]any `json:"metadata,omitempty"`
+	Extensions       []string       `json:"extensions,omitempty"`
+	ReferenceTaskIds []string       `json:"referenceTaskIds,omitempty"` // List of task IDs this message references
 }
 
 // MessageSendParams represents parameters for message/send and message/stream methods (A2A spec)
@@ -215,9 +214,10 @@ type MessageSendConfiguration struct {
 
 // PushNotificationConfig defines the configuration for push notifications.
 type PushNotificationConfig struct {
-	URL            string              `json:"url"`
-	Token          *string             `json:"token,omitempty"`
-	Authentication *AuthenticationInfo `json:"authentication,omitempty"`
+	ID             *string                             `json:"id"`
+	URL            string                              `json:"url"`
+	Token          *string                             `json:"token,omitempty"`
+	Authentication *PushNotificationAuthenticationInfo `json:"authentication,omitempty"`
 }
 
 // Part represents a component of a message or artifact.
@@ -283,8 +283,12 @@ type SendMessageRequest struct {
 type SendMessageResponse struct {
 	JSONRPC string        `json:"jsonrpc,omitempty"` // "2.0"
 	ID      any           `json:"id"`
-	Result  any           `json:"result,omitempty"` // Task | Message
+	Result  any           `json:"result,omitempty"` // SendMessageResponseResult
 	Error   *JSONRPCError `json:"error,omitempty"`
+}
+
+type SendMessageResponseResult interface {
+	Message | Task // Result can be either a Message or a Task
 }
 
 // SendStreamingMessageRequest represents the "message/stream" JSON-RPC request (A2A compliant)
@@ -299,9 +303,13 @@ type SendStreamingMessageRequest struct {
 type SendStreamingMessageResponse struct {
 	JSONRPC string        `json:"jsonrpc,omitempty"` // "2.0"
 	ID      any           `json:"id"`
-	Result  any           `json:"result,omitempty"` // Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent
+	Result  any           `json:"result,omitempty"` // SendStreamingMessageResponseResult
 	Error   *JSONRPCError `json:"error,omitempty"`
 	Final   *bool         `json:"final,omitempty"` // Indicates final event in stream
+}
+
+type SendStreamingMessageResponseResult interface {
+	Message | Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent
 }
 
 // ============================================================================
@@ -383,15 +391,17 @@ type SetTaskPushNotificationResponse struct {
 // Task represents the state and data associated with an agent task.
 type Task struct {
 	ID        string         `json:"id"`
-	SessionID *string        `json:"sessionId,omitempty"`
+	ContextID *string        `json:"contextId,omitempty"`
 	Status    TaskStatus     `json:"status"`
+	History   []Message      `json:"history,omitempty"`
 	Artifacts []Artifact     `json:"artifacts,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
+	Kind      string         `json:"kind"` // "task"
 }
 
 // TaskPushNotificationConfig associates a task ID with its push notification settings.
 type TaskPushNotificationConfig struct {
-	ID                     string                 `json:"id"`
+	TaskID                 string                 `json:"taskId"`
 	PushNotificationConfig PushNotificationConfig `json:"pushNotificationConfig"`
 }
 
@@ -428,6 +438,8 @@ const (
 	TaskStateCompleted     TaskState = "completed"
 	TaskStateCanceled      TaskState = "canceled"
 	TaskStateFailed        TaskState = "failed"
+	TaskStateRejected      TaskState = "rejected"
+	TaskStateAuthRequired  TaskState = "auth-required"
 	TaskStateUnknown       TaskState = "unknown"
 )
 
@@ -448,17 +460,23 @@ type TaskResubscriptionRequest struct {
 
 // TaskStatusUpdateEvent represents an event indicating a change in task status.
 type TaskStatusUpdateEvent struct {
-	ID       string         `json:"id"`
-	Status   TaskStatus     `json:"status"`
-	Final    bool           `json:"final,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Kind      string         `json:"kind"` // "status-update"
+	TaskId    string         `json:"taskId"`
+	ContextId string         `json:"contextId,omitempty"`
+	Status    TaskStatus     `json:"status"`
+	Final     bool           `json:"final,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskArtifactUpdateEvent represents an event indicating a new or updated artifact.
 type TaskArtifactUpdateEvent struct {
-	ID       string         `json:"id"`
-	Artifact Artifact       `json:"artifact"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Kind      string         `json:"kind"` // "artifact-update"
+	TaskID    string         `json:"taskId"`
+	ContextID string         `json:"contextId,omitempty"`
+	Artifact  Artifact       `json:"artifact"`
+	Append    bool           `json:"append,omitempty"`    // Indicates if this is an append to existing artifact
+	LastChunk bool           `json:"lastChunk,omitempty"` // Indicates if this is the last chunk of the artifact
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 // TextPart represents a plain text part of a message or artifact.

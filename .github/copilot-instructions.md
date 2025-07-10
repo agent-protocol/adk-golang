@@ -67,3 +67,7 @@ adk-golang/
 ├── examples/             # Example agents and usage
 └── tests/                # Test suites
 ```
+
+# Good read:
+## Message or Task?
+- https://a2aproject.github.io/A2A/latest/topics/life-of-a-task/

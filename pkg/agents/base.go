@@ -10,6 +10,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.BaseAgent = (*CustomAgent)(nil)
+
 // CustomAgent provides a basic implementation of the BaseAgent interface.
 // This can be embedded in concrete agent types.
 type CustomAgent struct {
@@ -23,8 +25,8 @@ type CustomAgent struct {
 	execute             func(invocationCtx *core.InvocationContext, eventChan chan<- *core.Event) error
 }
 
-// NewBaseAgent creates a new base agent implementation.
-func NewBaseAgent(name, description string) *CustomAgent {
+// NewCustomAgent creates a new base agent implementation.
+func NewCustomAgent(name, description string) *CustomAgent {
 	return &CustomAgent{
 		name:        name,
 		description: description,

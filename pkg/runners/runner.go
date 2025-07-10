@@ -13,6 +13,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/ptr"
 )
 
+var _ core.Runner = (*RunnerImpl)(nil)
+
 // RunnerImpl implements the Runner interface.
 // It orchestrates agent execution, manages sessions, and provides real-time event streaming.
 type RunnerImpl struct {

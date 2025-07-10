@@ -20,7 +20,7 @@ type MockAgent struct {
 // NewMockAgent creates a new mock agent for testing
 func NewMockAgent(name, description, responseTemplate string) *MockAgent {
 	agent := &MockAgent{
-		CustomAgent:      NewBaseAgent(name, description),
+		CustomAgent:      NewCustomAgent(name, description),
 		responseTemplate: responseTemplate,
 		callCount:        0,
 	}

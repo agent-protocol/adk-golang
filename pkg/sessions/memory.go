@@ -10,6 +10,8 @@ import (
 	"github.com/agent-protocol/adk-golang/pkg/core"
 )
 
+var _ core.SessionService = (*InMemorySessionService)(nil)
+
 // InMemorySessionService implements SessionService using in-memory storage.
 type InMemorySessionService struct {
 	sessions map[string]*core.Session
