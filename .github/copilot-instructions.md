@@ -46,6 +46,11 @@ And we're working to implement an Golang API.
 - Run `go install ./...` and `go test ./...` to build and test the project after making changes
 - use `ptr.Float32` creating pointers to float32 values, e.g. `ptr.Float32(0.7)`
 - Use `ptr.Ptr` creating pointers to values for other types, e.g. `ptr.Ptr(true)` or `ptr.Ptr(2000)`
+- Ensure all `Kind` fields in objects are set correctly to match the A2A specification:
+  - For `Task`, use `"task"`
+  - For `TaskStatusUpdateEvent`, use `"status-update"`
+  - For `TaskArtifactUpdateEvent`, use `"artifact-update"`
+  - For `Message`, use `"message"`
 
 # Project Structure:
 ```

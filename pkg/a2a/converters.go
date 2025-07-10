@@ -311,3 +311,25 @@ func CreateSimpleTextCoreContent(role, text string) *core.Content {
 		},
 	}
 }
+
+func DetermineTaskStateFromEvent(event *core.Event) TaskState {
+	if event.ErrorCode != nil {
+		return TaskStateFailed
+	}
+	if event.Actions.RequestedAuthConfigs != nil {
+		return TaskStateAuthRequired
+	}
+	if event.TurnComplete != nil && *event.TurnComplete {
+		return TaskStateCompleted
+	}
+	return TaskStateWorking
+}
+
+// ConvertEventToTaskStatusUpdate converts an ADK event to a task status update message
+func ConvertEventToTaskStatusUpdate(event *core.Event, invocationCtx *core.InvocationContext) *TaskStatusUpdateEvent {
+	panic("ConvertEventToTaskStatusUpdate is not implemented yet")
+}
+
+func ConvertEventToTaskArtifactUpdate(event *core.Event, filename string, version int) *TaskArtifactUpdateEvent {
+	panic("ConvertEventToTaskArtifactUpdate is not implemented yet")
+}

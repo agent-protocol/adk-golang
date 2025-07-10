@@ -289,13 +289,6 @@ func (s *A2AServer) convertMessageSendParamsToTaskSendParams(msgParams *a2a.Mess
 	return taskParams
 }
 
-// handleSendTaskStreaming handles the legacy tasks/sendSubscribe method
-func (s *A2AServer) handleSendTaskStreaming(ctx context.Context, params any) (interface{}, error) {
-	// For legacy compatibility, delegate to handleSendTask
-	// TODO: Implement actual streaming response with SSE
-	return s.handleSendTask(ctx, params)
-}
-
 // handleGetTask handles the tasks/get method
 func (s *A2AServer) handleGetTask(ctx context.Context, params any) (interface{}, error) {
 	// Parse parameters
