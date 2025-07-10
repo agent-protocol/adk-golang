@@ -8,7 +8,7 @@ Agent Development Kit (ADK) is a framework for building AI agents, and we're imp
 ollama serve # the example using llama3.2
 git clone https://github.com/agent-protocol/adk-golang.git
 cd adk-golang
-go run ./cmd/adk web examples
+go run ./cmd/adk web examples/agents
 ```
 Open the browser, select one of the demo app and check it.
 
